@@ -615,7 +615,7 @@ This skill uses the **Dual Reference Architecture** defined in the skills-repo `
 | **Project-level reference** | `{ProjectMemoryDir}/browser-ref/{site-key}.md` — project-specific patterns (this client) |
 
 `{ProjectMemoryDir}` = the user's Claude project memory directory (e.g., `~/.claude/projects/<hash>/memory/`)
-`{SkillDir}` = `.claude/skills/autoxpp-browser-v2/`
+`{SkillDir}` = `autoxpp-browser-v2/`
 
 ### On Session Start
 
