@@ -1,0 +1,18 @@
+{
+  "name": "xplusplus-ai",
+  "owner": {
+    "name": "XPLUSPLUS.AI",
+    "email": "contact@xplusplus.ai"
+  },
+  "description": "AI-powered D365 Finance & Operations development skills",
+  "plugins": [
+    {
+      "name": "autoxpp",
+      "source": "./",
+      "description": "Autonomous D365 F&O development engine — X++ coding, building, testing, browser automation",
+      "keywords": ["D365", "Dynamics 365", "Finance Operations", "F&O", "X++", "ERP", "Microsoft Dynamics", "AX"],
+      "category": "development",
+      "tags": ["d365", "dynamics-365", "xpp", "erp", "finance-operations"]
+    }
+  ]
+}
