@@ -1,0 +1,14 @@
+{
+  "name": "autoxpp",
+  "version": "1.4.0",
+  "description": "Autonomous D365 F&O development engine — X++ coding, building, testing, browser automation",
+  "author": {
+    "name": "XPLUSPLUS.AI",
+    "url": "https://xplusplus.ai"
+  },
+  "homepage": "https://xplusplus.ai",
+  "repository": "https://github.com/xplusplusai/autoxpp-marketplace",
+  "license": "proprietary",
+  "keywords": ["D365", "Dynamics 365", "Finance Operations", "F&O", "X++", "ERP"],
+  "skills": "./skills/"
+}
