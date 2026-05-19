@@ -172,6 +172,8 @@ Autonomous multi-phase execution can stall silently — a sub-agent exits, a pha
 
 See [xplusplus.ai/install.html](https://xplusplus.ai/install.html) for setup instructions.
 
+Watch the [demo video](https://www.youtube.com/watch?v=EaxUN7lpuX0) to see the full lifecycle in action.
+
 ---
 
 ## Quick Start
