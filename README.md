@@ -168,11 +168,15 @@ Autonomous multi-phase execution can stall silently — a sub-agent exits, a pha
 
 ---
 
+## Demo
+
+Watch the [full lifecycle demo](https://www.youtube.com/watch?v=EaxUN7lpuX0) — from requirement to tested code, unattended.
+
+---
+
 ## Installation
 
 See [xplusplus.ai/install.html](https://xplusplus.ai/install.html) for setup instructions.
-
-Watch the [demo video](https://www.youtube.com/watch?v=EaxUN7lpuX0) to see the full lifecycle in action.
 
 ---
 
