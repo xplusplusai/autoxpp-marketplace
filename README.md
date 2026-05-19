@@ -17,7 +17,7 @@
 
 ## What It Does
 
-AutoXPP is a multi-agent system of 20 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
+AutoXPP is a multi-agent system of 21 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
 
 1. **Analyst agent** decomposes the requirement into structured work items
 2. **QA agent** writes test cases in parallel
@@ -91,47 +91,48 @@ The watchdog monitors the entire lifecycle and alerts on stalled transitions. A 
 
 ### Core Development
 
-| Skill | Purpose |
-|:------|:--------|
-| **autoxpp-dev-v2** | X++ coding agent. Reads work items, loads D365 reference patterns, writes metadata artifacts (classes, tables, forms, extensions, security). Follows dependency order and logs every design decision. |
-| **autoxpp-build** | Drives Visual Studio 2022's full build-deploy cycle via PowerShell UI Automation. Zero human clicks — compile, sync database, deploy to online environment, all automated. |
-| **autoxpp-browser-v2** | Browser automation via Playwright CLI. Self-learning site patterns, persistent auth state, evidence capture. Handles D365's complex SPA forms and multi-step business processes. |
+| Skill | Tier | Purpose |
+|:------|:-----|:--------|
+| **autoxpp-dev-v2** | Pro | X++ coding agent. Reads work items, loads D365 reference patterns, writes metadata artifacts (classes, tables, forms, extensions, security). Follows dependency order and logs every design decision. |
+| **autoxpp-build** | Pro | Drives Visual Studio 2022's full build-deploy cycle via PowerShell UI Automation. Zero human clicks — compile, sync database, deploy to online environment, all automated. |
+| **autoxpp-browser-v2** | Free | Browser automation via Playwright CLI. Self-learning site patterns, persistent auth state, evidence capture. Handles D365's complex SPA forms and multi-step business processes. |
 
 ### Analysis & Quality Gates
 
-| Skill | Purpose |
-|:------|:--------|
-| **autoxpp-req-analyzer** | Decomposes a requirement into structured work items with dependency order, artifact types, and complexity classification. |
-| **autoxpp-test-composer** | Generates structured test cases from the requirement, including setup steps, expected outcomes, and verification queries. |
-| **autoxpp-design-reviewer** | Pre-coding design review gate. Validates the proposed solution against D365 patterns and flags risks before a single line of code is written. |
-| **autoxpp-quality-supervisor** | Epistemic watchdog. Audits design decisions, detects assumption drift, and injects corrections during long coding phases. |
+| Skill | Tier | Purpose |
+|:------|:-----|:--------|
+| **autoxpp-req-analyzer** | Pro | Decomposes a requirement into structured work items with dependency order, artifact types, and complexity classification. |
+| **autoxpp-test-composer** | Pro | Generates structured test cases from the requirement, including setup steps, expected outcomes, and verification queries. |
+| **autoxpp-design-reviewer** | Pro | Pre-coding design review gate. Validates the proposed solution against D365 patterns and flags risks before a single line of code is written. |
+| **autoxpp-quality-supervisor** | Pro | Epistemic watchdog. Audits design decisions, detects assumption drift, and injects corrections during long coding phases. |
 
 ### Testing & Verification
 
-| Skill | Purpose |
-|:------|:--------|
-| **autoxpp-tester** | Executes test cases via browser automation and SQL queries. Produces structured pass/fail reports with evidence. |
-| **autoxpp-test-data-seeder** | Background agent that pre-seeds test data while the developer agent is still analyzing code — uses idle environment time. |
-| **autoxpp-sql-jit** | Acquires temporary read-only SQL credentials from VS 2022's JIT dialog via UI Automation. Enables direct database queries for test verification and investigation without browser overhead — dramatically faster and cheaper than navigating D365 forms to check data. |
+| Skill | Tier | Purpose |
+|:------|:-----|:--------|
+| **autoxpp-tester** | Pro | Executes test cases via browser automation and SQL queries. Produces structured pass/fail reports with evidence. |
+| **autoxpp-test-data-seeder** | Pro | Background agent that pre-seeds test data while the developer agent is still analyzing code — uses idle environment time. |
+| **autoxpp-sql-jit** | Free | Acquires temporary read-only SQL credentials from VS 2022's JIT dialog via UI Automation. Enables direct database queries for test verification and investigation without browser overhead — dramatically faster and cheaper than navigating D365 forms to check data. |
 
 ### Environment & Infrastructure
 
-| Skill | Purpose |
-|:------|:--------|
-| **autoxpp-ude-switch** | Switches VS 2022's Unified Developer Experience between multiple D365 environments on a single machine. One dev VM serves multiple customers. |
-| **autoxpp-load-lifecycle** | Bootloader that transitions from research to autonomous execution. Creates the workspace, arms the watchdog, and launches the first phases. |
-| **autoxpp-watchdog** | External safety net. Monitors lifecycle.log for stalled phase transitions and emits alerts when expected successor events are missing. |
-| **autoxpp-submit-learnings** | Extracts durable learnings from sessions and lifecycles, sanitizes, and submits to the xgen backend for centralized author review. Human-gated. |
+| Skill | Tier | Purpose |
+|:------|:-----|:--------|
+| **autoxpp-ude-switch** | Free | Switches VS 2022's Unified Developer Experience between multiple D365 environments on a single machine. One dev VM serves multiple customers. |
+| **autoxpp-azure-devops** | Free | Azure DevOps REST API client. Reads and queries work items, comments, attachments, and boards directly from Claude Code. |
+| **autoxpp-load-lifecycle** | Pro | Bootloader that transitions from research to autonomous execution. Creates the workspace, arms the watchdog, and launches the first phases. |
+| **autoxpp-watchdog** | Pro | External safety net. Monitors lifecycle.log for stalled phase transitions and emits alerts when expected successor events are missing. |
+| **autoxpp-submit-learnings** | Pro | Extracts durable learnings from sessions and lifecycles, sanitizes, and submits to the xgen backend for centralized author review. Human-gated. |
 
 ### Role Loaders
 
 Skills that load a specialized persona before pre-lifecycle work (investigation, debugging, planning):
 
-| Skill | Role |
-|:------|:-----|
-| **autoxpp-load-senior-fo-dev** | Senior D365 F&O Developer — for code research, debugging, solution design |
-| **autoxpp-load-integration-dev** | Integration Developer — for Azure Functions, Service Bus, Dataverse plugins |
-| **autoxpp-load-qa-engineer** | QA Engineer — for test planning, data strategy, coverage analysis |
+| Skill | Tier | Role |
+|:------|:-----|:-----|
+| **autoxpp-load-senior-fo-dev** | Pro | Senior D365 F&O Developer — for code research, debugging, solution design |
+| **autoxpp-load-integration-dev** | Pro | Integration Developer — for Azure Functions, Service Bus, Dataverse plugins |
+| **autoxpp-load-qa-engineer** | Pro | QA Engineer — for test planning, data strategy, coverage analysis |
 
 ---
 
