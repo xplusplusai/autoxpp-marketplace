@@ -17,7 +17,7 @@
 
 ## What It Does
 
-AutoXPP is a multi-agent system of 22 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
+AutoXPP is a multi-agent system of 20 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
 
 1. **Analyst agent** decomposes the requirement into structured work items
 2. **QA agent** writes test cases in parallel
@@ -94,7 +94,6 @@ The watchdog monitors the entire lifecycle and alerts on stalled transitions. A 
 | Skill | Purpose |
 |:------|:--------|
 | **autoxpp-dev-v2** | X++ coding agent. Reads work items, loads D365 reference patterns, writes metadata artifacts (classes, tables, forms, extensions, security). Follows dependency order and logs every design decision. |
-| **autoxpp-dev-reference** | Shared pattern library for D365 development. Verified patterns for tables, forms, extensions, posting frameworks, batch jobs, security, reports. Consulted before writing any code. |
 | **autoxpp-build** | Drives Visual Studio 2022's full build-deploy cycle via PowerShell UI Automation. Zero human clicks — compile, sync database, deploy to online environment, all automated. |
 | **autoxpp-browser-v2** | Browser automation via Playwright CLI. Self-learning site patterns, persistent auth state, evidence capture. Handles D365's complex SPA forms and multi-step business processes. |
 
@@ -133,14 +132,6 @@ Skills that load a specialized persona before pre-lifecycle work (investigation,
 | **autoxpp-load-senior-fo-dev** | Senior D365 F&O Developer — for code research, debugging, solution design |
 | **autoxpp-load-integration-dev** | Integration Developer — for Azure Functions, Service Bus, Dataverse plugins |
 | **autoxpp-load-qa-engineer** | QA Engineer — for test planning, data strategy, coverage analysis |
-
-### Shared Utilities
-
-| Script | Purpose |
-|:-------|:--------|
-| **scripts/sql.py** | Read-only SQL CLI. Runs queries against D365 databases using cached JIT credentials. Safety rails: rejects write statements, injects TOP limits on unbounded queries. |
-| **scripts/odata.py** | D365 OData CLI. Full CRUD operations (get/post/patch/delete) against OData entities with per-environment OAuth credentials. |
-| **scripts/validate-workspace.ps1** | Workspace lint. Checks folder structure and file conventions against the canonical layout. Non-blocking — reports drift, never fails. |
 
 ---
 
