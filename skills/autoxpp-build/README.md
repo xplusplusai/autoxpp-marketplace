@@ -35,6 +35,14 @@ Without this skill, every iteration of the code → build → test → fix cycle
 | After code changes | AI triggers automatically after writing X++ code |
 | Fix loop | Coding agent fixes a test failure, build agent recompiles and redeploys |
 
+## Tips for Faster Builds
+
+1. **Don't touch the mouse during UIA.** The skill drives VS 2022 via mouse and keyboard automation. Moving the mouse, clicking, or switching windows mid-build will derail it — menus miss targets, dialogs lose focus, and the skill may restart VS as recovery, costing 5-10 minutes.
+
+2. **First build of the day is slower.** Expect 2+ minutes of overhead on the first build as VS loads extensions, updates scripts, and warms caches. Subsequent builds in the same session are significantly faster.
+
+3. **Pre-warm VS 2022 before starting.** Launch VS as Administrator, connect to your online Dataverse environment, and let it finish loading before invoking the skill. A cold VS start adds minutes to the first build; a warm, connected VS lets the skill jump straight to compilation.
+
 ## Parameters
 
 | Parameter | Resolution | Description |
