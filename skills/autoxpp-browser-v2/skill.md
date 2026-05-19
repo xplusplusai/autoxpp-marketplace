@@ -126,7 +126,7 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
 
 9. **USE `--persistent` AS PRIMARY AUTH**: The `--persistent` flag gives playwright-cli a real Chrome user-data-dir that accumulates cookies and saved credentials across sessions. This is the simplest and most reliable auth path — no profile copying needed. The persistent profile lives at `$LOCALAPPDATA/ms-playwright/daemon/*/ud-default-chrome/` and survives browser restarts. Google OAuth blocks playwright-launched browsers regardless of profile strategy, so use Microsoft login when manual auth is needed.
 
-10. **SAVE AUTH STATE AS BACKUP**: After any successful login, run `playwright-cli state-save` and copy the result to `{ProjectMemoryDir}/auth-state/{domain-key}.json`. This serves as a fallback if the persistent profile is lost (daemon cleanup, machine switch). On session start, if `--persistent` doesn't have valid auth, try `state-load` before asking the user to log in manually.
+10. **SAVE AUTH STATE AS BACKUP**: After any successful login, run `playwright-cli state-save` and copy the result to `~/.autoxpp/cache/auth-state/{domain-key}.json`. This serves as a fallback if the persistent profile is lost (daemon cleanup, machine switch). On session start, if `--persistent` doesn't have valid auth, try `state-load` before asking the user to log in manually. Do NOT save auth state to `{ProjectMemoryDir}` — cookie dumps are ~270KB and waste context when loaded as project memory.
 
 11. **ORPHAN-SAFE POLLING LOOPS**: Every `until`/`while` loop that polls `playwright-cli snapshot` (or any other blocking wait) MUST include both guards below. Loops without these guards become orphans when the Claude Code session dies — they keep the playwright daemon alive indefinitely, respawning Chrome on close.
 
@@ -299,7 +299,7 @@ automation flags. Use Microsoft login when manual auth is needed.
 │  2. FALLBACK — PLAYWRIGHT STATE-LOAD:                         │
 │     Derive domain key from target URL                         │
 │     e.g., <env>.operations.dynamics.com → d365-<env>          │
-│     Check: {ProjectMemoryDir}/auth-state/{domain-key}.json    │
+│     Check: ~/.autoxpp/cache/auth-state/{domain-key}.json      │
 │                                                               │
 │     IF state file exists:                                     │
 │       playwright-cli state-load "{path-to-state-file}"        │
@@ -319,10 +319,10 @@ automation flags. Use Microsoft login when manual auth is needed.
 │  4. SAVE AUTH STATE (immediately after login):                │
 │     playwright-cli state-save                                 │
 │     → Output lands in .playwright-cli/ by default             │
-│     → Copy/move to {ProjectMemoryDir}/auth-state/{domain-key} │
-│     mkdir -p "{ProjectMemoryDir}/auth-state"                  │
+│     → Copy/move to ~/.autoxpp/cache/auth-state/{domain-key}   │
+│     mkdir -p ~/.autoxpp/cache/auth-state                      │
 │     cp .playwright-cli/state-*.json \                         │
-│        "{ProjectMemoryDir}/auth-state/{domain-key}.json"      │
+│        ~/.autoxpp/cache/auth-state/{domain-key}.json          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
