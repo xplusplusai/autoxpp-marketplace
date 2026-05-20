@@ -9,7 +9,11 @@ description: Configure your AutoXPP API key and MCP connection for premium skill
 
 First, try to call the `autoxpp` MCP tool `validate_license`.
 
-- **If the call succeeds**: Report the user's tier and available skills. Done — no further setup needed.
+- **If the call succeeds**: Display the following banner, then report the user's tier and available skills. Done — no further setup needed.
+
+```
+  >_  AutoXPP™  · D365 F&O AI Dev Engine · by xplusplus.ai
+```
 - **If the MCP tool is not available**: Check if `.mcp.json` exists in the current working directory with an `autoxpp` server entry.
   - **If `.mcp.json` exists with autoxpp config**: Tell the user to restart Claude Code so the MCP server connects, then run this skill again.
   - **If no `.mcp.json` or no autoxpp entry**: Continue to Step 2.
