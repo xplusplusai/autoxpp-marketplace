@@ -153,6 +153,25 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
 
 13. **MAXIMIZE VIEWPORT ON LAUNCH**: After opening a browser session, immediately resize to full HD: `playwright-cli resize 1920 1080`. D365 forms hide toolbar buttons, collapse action panes, and truncate grids at smaller viewports. If you can't find an expected element (button, link, menu item), the first fix is maximizing — not re-navigating or assuming the element doesn't exist.
 
+14. **D365 CE ACTIONS VIA BROWSER CONTEXT**: D365 CE bound/unbound actions (WinOpportunity, LoseOpportunity, CloseIncident, etc.) can be triggered from the browser's authenticated session using `playwright-cli execute` with a `page.evaluate` fetch call to the Dataverse Web API. This counts as a browser-based trigger for Phase 5 testing because the request runs in the browser's authenticated session context — same auth, same origin, same plugin chain as clicking the UI button.
+
+    Example — WinOpportunity:
+    ```js
+    await page.evaluate(() => fetch('/api/data/v9.2/WinOpportunity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'OData-MaxVersion': '4.0', 'OData-Version': '4.0' },
+      body: JSON.stringify({
+        Status: 3,
+        OpportunityClose: {
+          'opportunityid@odata.bind': '/opportunities(<guid>)',
+          subject: 'Won'
+        }
+      })
+    }).then(r => 'HTTP ' + r.status + ' ' + r.statusText));
+    ```
+    HTTP 204 = success. The CE plugin chain fires identically to a UI button click.
+    This pattern works for any Dataverse action — substitute the action name, parameters, and entity binding.
+
 ---
 
 ## Section 1: Environment Check

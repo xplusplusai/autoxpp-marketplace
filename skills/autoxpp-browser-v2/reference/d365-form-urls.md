@@ -81,6 +81,13 @@ Direct navigation: `{baseUrl}/?cmp={company}&mi={menuItem}`
 |:-----|:----------|:------|
 | Released products | `EcoResProductPerCompanyListPage` | Quick filter defaults to "Product name" column — use Ctrl+F3 Filter Pane to filter by "Item number" instead |
 
+## Project Management
+
+| Form | Menu Item | Notes |
+|:-----|:----------|:------|
+| All Projects | `ProjProjectsListPage` | Filter by Project ID |
+| Item requirements | N/A | No direct mi= URL. Navigate from project: Plan tab → Item requirements button |
+
 ## Navigation Tips
 
 - **Forms needing buffer**: Detail forms (AssetBook, BankReconciliation) require active record context. Navigate to parent list first, select record, use action pane button.
