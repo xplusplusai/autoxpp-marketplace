@@ -22,7 +22,8 @@ Path: `C:\Users\[user]\.autoxpp\ude-configs.json`
       "dialogTransitionSeconds": 30,
       "vsRestartSeconds": 120
     },
-    "defaultCustomMetadataRoot": "C:\\D365Metadata"
+    "defaultCustomMetadataRoot": "C:\\D365Metadata",
+    "maxFixLoopIterations": 3
   },
   "udeConfigs": [
     {
@@ -70,6 +71,7 @@ Example: `<env-1>` inherits `solutionName: "Default"` from defaults because the 
 | `timeouts.dialogTransitionSeconds` | int | Short waits for dialog pop-ups between steps. |
 | `timeouts.vsRestartSeconds` | int | How long to wait for `devenv.exe` to show a main window. |
 | `defaultCustomMetadataRoot` | string | Parent path suggested by `--add` flow when asking for metadata folder. |
+| `maxFixLoopIterations` | int | Max times the agent retries when hitting the same error in a fix loop. `0` = no limit (keep trying until goal is met). Default: `3`. |
 
 ## Per-UDE fields
 
