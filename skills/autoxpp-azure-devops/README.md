@@ -11,7 +11,7 @@ This skill extracts all of it: structured fields, HTML-stripped comments, inline
 ## Key Capabilities
 
 - **URL parsing** -- extracts organization, project, and work item ID directly from DevOps URLs
-- **PAT resolution** -- project-level PAT file, global `~/.claude/.devops_pat.json` with per-org entries, or user prompt
+- **PAT resolution** -- project-level PAT file, global `~/.devops_pat.json` with per-org entries, or user prompt
 - **Full content extraction** -- title, description, repro steps, state, assignment, plus all rich-text fields
 - **Comment thread** -- newest-first, HTML-stripped, with author and date
 - **Inline image extraction** -- parses `<img src="...">` from HTML fields (description, repro steps, comments) and downloads them
