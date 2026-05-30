@@ -62,7 +62,7 @@ If prerequisites are missing, skill surfaces an error with install guidance.
 
 See `reference/config-schema.md` for the schema and field semantics.
 
-Minimum required per UDE: `name`, `dataverseUrl`, `customMetadataFolder`. Everything else falls back to the `defaults` section.
+Minimum required per UDE: `name`, `dataverseUrl`, `customMetadataFolder`. Everything else is optional — connection settings (`solutionName`, `msAccount`, `downloadPolicy`) are per-UDE and fall back to code defaults; other fields (`foUrl`, `moduleName`, `oauth`, `login`, `sqlCache`) are owned by other skills and preserved untouched.
 
 ## Scripts
 
@@ -88,7 +88,7 @@ pwsh "scripts/switch_ude.ps1" -Add
 | Script | Purpose |
 |---|---|
 | `switch_ude.ps1` | Main orchestrator (Phase A/B/C) |
-| `config_helpers.ps1` | Load + merge `defaults` with per-UDE config (dot-sourced) |
+| `config_helpers.ps1` | Load/save shared `ude-configs.json` (stamps schemaVersion 3, BOM-less) + resolve a UDE entry (dot-sourced) |
 | `list_udes.ps1` | Print configured UDE list with last-used info |
 | `show_current_ude.ps1` | Detect active UDE from XPPConfig folder + `lastUsed` |
 | `add_ude.ps1` | Interactive add flow (prompts, writes JSON) |
@@ -110,7 +110,7 @@ pwsh "scripts/switch_ude.ps1" -Add
 ## Flow summary (happy path)
 
 ```
-1. Load ude-configs.json → resolve {name} against defaults
+1. Load ude-configs.json → resolve {name} entry
 2. Verify VS 2022 + Power Platform Tools extension present
 3. Snapshot XPPConfig baseline
 4. Ensure VS running, close any open solution

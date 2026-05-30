@@ -37,7 +37,6 @@ function Read-Optional {
 }
 
 $cfg = Load-UdeConfigs
-$defaults = $cfg.defaults
 
 if (-not $Name) { $Name = Read-Required "UDE name (unique key, e.g. 'customer-dev1')" }
 
@@ -50,33 +49,28 @@ if ($cfg.udeConfigs | Where-Object { $_.name -eq $Name }) {
 if (-not $DataverseUrl) { $DataverseUrl = Read-Required "Dataverse URL (e.g. https://org.crm.dynamics.com)" }
 
 if (-not $CustomMetadataFolder) {
-    $metaRoot = if ($defaults -and $defaults.defaultCustomMetadataRoot) { $defaults.defaultCustomMetadataRoot } else { "C:\D365Metadata" }
-    $suggested = Join-Path $metaRoot "$Name\Metadata"
+    $suggested = Join-Path "C:\D365Metadata" "$Name\Metadata"
     $CustomMetadataFolder = Read-Required "Custom metadata folder (full path)" $suggested
 }
 
 if (-not $Description) { $Description = Read-Optional "Description (human-readable label)" }
 if (-not $FoUrl)       { $FoUrl       = Read-Optional "FO URL (e.g. https://org.sandbox.operations.dynamics.com)" }
-if (-not $MsAccount)   { $MsAccount   = Read-Optional "MS account (only if different from default)" }
+if (-not $MsAccount)   { $MsAccount   = Read-Optional "MS account for sign-in" }
 if (-not $SolutionName){ $SolutionName= Read-Optional "Solution name" "Default" }
 if (-not $DefaultCompany) { $DefaultCompany = Read-Optional "Default company (e.g. USMF)" }
 
-# Build entry — omit fields that match defaults or are empty
+# Build entry — store every non-empty per-UDE field
 $entry = [ordered]@{
     name                 = $Name
     description          = $Description
     dataverseUrl         = $DataverseUrl
     customMetadataFolder = $CustomMetadataFolder
 }
-if ($FoUrl)       { $entry.foUrl = $FoUrl }
+if ($FoUrl)          { $entry.foUrl = $FoUrl }
 if ($DefaultCompany) { $entry.defaultCompany = $DefaultCompany }
-
-# Only store override values (not matching defaults)
-$defaultMsAccount = if ($defaults) { $defaults.msAccount } else { "" }
-if ($MsAccount -and $MsAccount -ne $defaultMsAccount) { $entry.msAccount = $MsAccount }
-
-$defaultSolName = if ($defaults) { $defaults.solutionName } else { "Default" }
-if ($SolutionName -and $SolutionName -ne $defaultSolName) { $entry.solutionName = $SolutionName }
+if ($MsAccount)      { $entry.msAccount = $MsAccount }
+# solutionName defaults to "Default" in code — only persist a non-default value
+if ($SolutionName -and $SolutionName -ne "Default") { $entry.solutionName = $SolutionName }
 
 $entryObj = [PSCustomObject]$entry
 

@@ -37,7 +37,7 @@ if (-not $VsPath) {
 }
 
 if (-not $VsPath -or -not (Test-Path $VsPath)) {
-    Write-Host "ERROR: devenv.exe not found. Specify -VsPath or set vsPath in ude-configs.json defaults."
+    Write-Host "ERROR: devenv.exe not found. Specify -VsPath or set vsPath in the UDE entry in ude-configs.json."
     exit 1
 }
 

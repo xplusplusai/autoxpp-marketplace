@@ -49,7 +49,7 @@ Personal Access Token stored in a JSON file on disk. Scope-limited and expires (
 **File locations (checked in order):**
 
 1. **Project-level PAT file** — path specified in CLAUDE.md or memory (e.g. `Docs/DevOps/PAT.txt`). Plain text, token only.
-2. **Global PAT file** — `~/.claude/.devops_pat.json`. JSON with per-org entries:
+2. **Global PAT file** — `~/.devops_pat.json`. JSON with per-org entries:
 
 ```json
 {
@@ -80,7 +80,7 @@ Option A — Fix GCM (recommended, no expiry):
 Option B — Create/update a PAT:
   1. Go to: https://dev.azure.com/{Org}/_usersSettings/tokens
   2. Create token with scope: Work Items (Read, Write, & Manage)
-  3. Save to: ~/.claude/.devops_pat.json  under key "{org_lower}"
+  3. Save to: ~/.devops_pat.json  under key "{org_lower}"
 ```
 
 ## Access Pattern — Python Implementation
@@ -116,7 +116,7 @@ def _try_pat(org, project_pat_path=None):
         with open(project_pat_path) as f:
             return f.read().strip()
     # Global PAT file
-    global_path = os.path.expanduser('~/.claude/.devops_pat.json')
+    global_path = os.path.expanduser('~/.devops_pat.json')
     if os.path.isfile(global_path):
         with open(global_path) as f:
             data = json.load(f)
@@ -162,7 +162,7 @@ class AuthError(Exception):
             'Option B - Create/update a PAT:',
             f'  1. Go to: https://dev.azure.com/{self.org}/_usersSettings/tokens',
             '  2. Create token with scope: Work Items (Read, Write, & Manage)',
-            f'  3. Save to: ~/.claude/.devops_pat.json  under key "{self.org_lower}"',
+            f'  3. Save to: ~/.devops_pat.json  under key "{self.org_lower}"',
         ]
         if self.project_pat_path:
             lines.append(f'  Or save to project PAT: {self.project_pat_path}')
@@ -224,7 +224,7 @@ def _print_401(org, project_pat_path):
     print("  Scopes: Work Items (Read, Write, & Manage)")
     if project_pat_path:
         print(f"  Save to: {project_pat_path}")
-    print(f"  Or: ~/.claude/.devops_pat.json  entry \"{org_lower}\"")
+    print(f"  Or: ~/.devops_pat.json  entry \"{org_lower}\"")
     print("=" * 64)
 ```
 
@@ -241,7 +241,7 @@ if [ -n "$TOKEN" ]; then
   AUTH_HEADER="Authorization: Bearer $TOKEN"
 else
   # Fall back to PAT
-  PAT=$(python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.claude/.devops_pat.json'))).get('{org_lower}',{}).get('pat',''))" 2>/dev/null)
+  PAT=$(python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.devops_pat.json'))).get('{org_lower}',{}).get('pat',''))" 2>/dev/null)
   AUTH_HEADER="Authorization: Basic $(printf ':%s' "$PAT" | base64 -w0)"
 fi
 
