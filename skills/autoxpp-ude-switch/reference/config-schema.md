@@ -1,28 +1,18 @@
-# ude-configs.json — schema reference
+# UDE Config Schema
 
 Path: `C:\Users\[user]\.autoxpp\ude-configs.json`
+
+This is the **shared, single source of truth** for environment config across all autoxpp skills (schemaVersion ≥ 3). ude-switch reads the UDE list, switches Visual Studio to the target Dataverse, and writes back `lastUsed` / `lastKnownVersion` / `activeEnv` after a successful switch.
+
+> **Shared-file rule:** Other skills (build, sql-jit, tester, lifecycle) read and write this same file. ude-switch MUST preserve fields it does not own — load the whole object, mutate only `activeEnv` / per-entry `lastUsed` / `lastKnownVersion`, and save it back. Never drop unknown top-level keys or unknown per-entry keys (`moduleName`, `standardCodebasePath`, `oauth`, `login`, `sqlCache`, `defaults.maxFixLoopIterations`, etc.). `Save-UdeConfigs` stamps `schemaVersion = 3` on every write, so a switch/add operation upgrades a stale config in place.
 
 ## Full example
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "activeEnv": "<env-1>",
   "defaults": {
-    "solutionName": "Default",
-    "msAccount": "<user>@<tenant>.com",
-    "signInAsCurrentUser": true,
-    "deploymentType": "Office365",
-    "downloadPolicy": "ask",
-    "closeOpenSolutionBeforeSwitch": true,
-    "vsPath": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\IDE\\devenv.exe",
-    "timeouts": {
-      "dataverseConnectSeconds": 180,
-      "metadataDownloadSeconds": 3600,
-      "dialogTransitionSeconds": 30,
-      "vsRestartSeconds": 120
-    },
-    "defaultCustomMetadataRoot": "C:\\D365Metadata",
     "maxFixLoopIterations": 3
   },
   "udeConfigs": [
@@ -32,9 +22,17 @@ Path: `C:\Users\[user]\.autoxpp\ude-configs.json`
       "dataverseUrl": "https://<env-1>.crm.dynamics.com",
       "foUrl": "https://<env-1>.sandbox.operations.dynamics.com",
       "customMetadataFolder": "C:\\D365Metadata\\<ModelRoot-A>\\Metadata",
+      "moduleName": "<ModelRoot-A>",
+      "standardCodebasePath": "C:\\AosService\\PackagesLocalDirectory",
       "defaultCompany": "USMF",
+      "solutionName": "Default",
+      "msAccount": "<user>@<tenant>.com",
+      "downloadPolicy": "ask",
       "lastUsed": "2026-04-18T01:40:00Z",
-      "lastKnownVersion": "10.0.2428.95"
+      "lastKnownVersion": "10.0.2428.95",
+      "oauth": { "tenantId": "", "clientId": "", "clientSecret": "", "grantType": "client_credentials" },
+      "login": { "adminUser": "", "adminPassword": "", "testUser": "", "testPassword": "" },
+      "sqlCache": { }
     }
   ]
 }
@@ -43,51 +41,34 @@ Path: `C:\Users\[user]\.autoxpp\ude-configs.json`
 ## Top-level fields
 
 | Field | Type | Notes |
-|---|---|---|
-| `schemaVersion` | int | Schema version. Current: 1. |
-| `activeEnv` | string | Name of the currently active UDE. Set automatically on successful switch. All skills read this field to determine which env entry to use — no `lastUsed` timestamp sorting needed. |
-| `defaults` | object | Default values inherited by all UDE entries (see below). |
-| `udeConfigs` | array | Per-environment entries (see below). |
+|-------|------|-------|
+| `schemaVersion` | int | Shared schema version. **Current: 3.** ude-switch stamps `3` on every save (upgrades a stale v1/v2 file in place). |
+| `activeEnv` | string | Name of the currently-active UDE. Set automatically on a successful switch. All skills read this to pick the env entry. If unset, the first `udeConfigs` entry is used. |
+| `defaults` | object | Shared lifecycle defaults. The only key here is `maxFixLoopIterations` (owned by the lifecycle skills). ude-switch never reads or writes it — it just preserves whatever is present. |
+| `udeConfigs` | array | List of UDE environment definitions. |
 
-## Resolution
-
-When the skill processes a UDE entry, it **merges** `defaults` with the per-UDE fields. Per-UDE fields override defaults.
-
-Example: `<env-1>` inherits `solutionName: "Default"` from defaults because the entry doesn't specify it. If `<env-2>` had `"solutionName": "Custom"`, that would override.
-
-## `defaults` fields
-
-| Field | Type | Notes |
-|---|---|---|
-| `solutionName` | string | Passed to the "Select Solution" combo. "Default" fits most UDEs. |
-| `msAccount` | string | Informational; Windows WAM picks the account. Useful when `--add` prompts. |
-| `signInAsCurrentUser` | bool | Expected state of the Login dialog checkbox. |
-| `deploymentType` | string | "Office365" or "OnPremises". Skill verifies; does not force-change. |
-| `downloadPolicy` | string | `always` \| `ask` \| `skip` \| `skip-if-cached`. v1 uses `ask` = Yes. |
-| `closeOpenSolutionBeforeSwitch` | bool | True = `File → Close Solution` before switching. |
-| `vsPath` | string | Full path to `devenv.exe` — used if VS isn't running. Auto-detected if missing. |
-| `timeouts.dataverseConnectSeconds` | int | How long to wait on "Validating / Loading Workflows..." before giving up. |
-| `timeouts.metadataDownloadSeconds` | int | How long to wait on "Client assets download" (~20 min typical, 1hr guardrail). |
-| `timeouts.dialogTransitionSeconds` | int | Short waits for dialog pop-ups between steps. |
-| `timeouts.vsRestartSeconds` | int | How long to wait for `devenv.exe` to show a main window. |
-| `defaultCustomMetadataRoot` | string | Parent path suggested by `--add` flow when asking for metadata folder. |
-| `maxFixLoopIterations` | int | Max times the agent retries when hitting the same error in a fix loop. `0` = no limit (keep trying until goal is met). Default: `3`. |
+> ude-switch does **not** define its own `defaults` namespace. Connection settings (solution name, sign-in account, download policy) are per-UDE fields, not shared defaults.
 
 ## Per-UDE fields
 
-| Field | Required | Notes |
-|---|---|---|
-| `name` | yes | Unique key. Matches `XPPConfig\{name}___{version}.json`. |
-| `dataverseUrl` | yes | Typed into the "Enter environment instance url" popup. |
-| `customMetadataFolder` | yes | Full path (any structure). Skill auto-discovers git state. |
-| `description` | no | Shown in picker. |
-| `foUrl` | no | For other autoxpp-* skills needing the FO front-end URL. |
-| `defaultCompany` | no | Written into XPP config JSON's `DefaultCompany` field during retargeting. |
-| `msAccount` | no | Overrides `defaults.msAccount` for cross-tenant UDEs. |
-| `solutionName` | no | Overrides `defaults.solutionName`. |
-| `downloadPolicy` | no | Overrides `defaults.downloadPolicy`. |
-| `lastUsed` | auto | Updated by skill on successful switch. |
-| `lastKnownVersion` | auto | Updated by skill with the platform version detected on switch. |
+"Required" = ude-switch needs it to perform a switch. Other skills consume additional fields (`foUrl`, `moduleName`, `standardCodebasePath`, `oauth`, `login`, `sqlCache`, …) — ude-switch leaves those untouched.
+
+| Field | Required | Owner | Notes |
+|-------|----------|-------|-------|
+| `name` | yes | shared | Unique key / friendly name. Match key for the target arg and `activeEnv`. Matches `XPPConfig\{name}___{version}.json`. |
+| `dataverseUrl` | yes | ude-switch | Typed into the "Enter environment instance url" popup. |
+| `customMetadataFolder` | yes | shared | Per-UDE metadata folder, retargeted into the XPP config on switch. Must be unique per UDE. |
+| `description` | no | ude-switch | Shown in the picker. |
+| `foUrl` | no | shared | F&O front-end URL. Used by tester/build; ude-switch only displays it. |
+| `moduleName` | no | shared | Owned by dev/build skills. Preserve. |
+| `standardCodebasePath` | no | shared | Owned by dev/build skills. Preserve. |
+| `defaultCompany` | no | shared | Written into the XPP config JSON's `DefaultCompany` during retargeting; **also** the canonical company other skills read from this file. |
+| `solutionName` | no | ude-switch | Dataverse solution to select. Defaults to `Default` if absent. |
+| `msAccount` | no | ude-switch | Microsoft account for sign-in. |
+| `downloadPolicy` | no | ude-switch | `always` \| `ask` \| `skip` \| `skip-if-cached` for the client-assets download. Defaults to `ask`. |
+| `lastUsed` | auto | ude-switch | ISO timestamp, updated on switch. |
+| `lastKnownVersion` | auto | ude-switch | PackagesLocalDirectory version, updated on switch. |
+| `oauth` / `login` / `sqlCache` | no | other skills | Owned by build / sql-jit / tester. ude-switch preserves them verbatim. |
 
 ## Minimum valid entry
 
@@ -99,12 +80,18 @@ Example: `<env-1>` inherits `solutionName: "Default"` from defaults because the 
 }
 ```
 
-Everything else falls back to defaults.
+Everything else falls back to code defaults.
+
+## Notes
+
+- The active UDE is whichever entry matches `activeEnv`, or — if `activeEnv` is absent — the first `udeConfigs` entry.
+- `customMetadataFolder` must be unique per UDE so environments don't collide on the same metadata path.
+- ude-switch writes the file as **UTF-8 without BOM** — a BOM breaks the Python consumers (`sql.py`, `odata.py`).
 
 ## Editing manually vs. `--add` flow
 
 - Use `--add` to create new entries via guided prompts.
-- Edit the JSON directly to change existing entries, tweak defaults, or rearrange.
+- Edit the JSON directly to change existing entries or rearrange.
 - The skill does not watch the file — it reads fresh on each invocation.
 
 ## Version control (optional)

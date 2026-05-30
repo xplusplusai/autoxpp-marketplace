@@ -31,12 +31,20 @@ function Save-UdeConfigs {
     param([Parameter(Mandatory=$true)]$Config)
     $dir = Split-Path -Parent $script:UdeConfigPath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    # Stamp the current shared schema version so a switch/add upgrades a stale (v1/v2) config in place.
+    if ($Config.PSObject.Properties.Name -contains 'schemaVersion') {
+        $Config.schemaVersion = 3
+    } else {
+        $Config | Add-Member -NotePropertyName 'schemaVersion' -NotePropertyValue 3
+    }
     $json = $Config | ConvertTo-Json -Depth 20
-    Set-Content -Path $script:UdeConfigPath -Value $json -Encoding UTF8
+    # BOM-less UTF-8: the Python consumers (sql.py / odata.py) reject a UTF-8 BOM.
+    [System.IO.File]::WriteAllText($script:UdeConfigPath, $json, (New-Object System.Text.UTF8Encoding $false))
 }
 
 function Resolve-Ude {
-    # Returns a merged hashtable with every setting resolved (defaults + per-UDE override).
+    # Returns a hashtable of the per-UDE settings for $Name. All settings are per-UDE
+    # in schemaVersion 3 — there is no defaults-merge.
     param(
         [Parameter(Mandatory=$true)]$Config,
         [Parameter(Mandatory=$true)][string]$Name
@@ -48,26 +56,19 @@ function Resolve-Ude {
         throw "UDE '$Name' not found in config. Known UDEs: $known"
     }
 
-    $merged = @{}
-    # Copy defaults first
-    if ($Config.defaults) {
-        $Config.defaults.PSObject.Properties | ForEach-Object {
-            $merged[$_.Name] = $_.Value
-        }
-    }
-    # Override with UDE-specific fields
+    $resolved = @{}
     $ude.PSObject.Properties | ForEach-Object {
-        $merged[$_.Name] = $_.Value
+        $resolved[$_.Name] = $_.Value
     }
 
     # Validate required fields
     foreach ($req in @('name','dataverseUrl','customMetadataFolder')) {
-        if (-not $merged.ContainsKey($req) -or [string]::IsNullOrWhiteSpace([string]$merged[$req])) {
+        if (-not $resolved.ContainsKey($req) -or [string]::IsNullOrWhiteSpace([string]$resolved[$req])) {
             throw "UDE '$Name' missing required field '$req'"
         }
     }
 
-    return $merged
+    return $resolved
 }
 
 function Get-ActiveUdeName {
@@ -76,13 +77,7 @@ function Get-ActiveUdeName {
         -not [string]::IsNullOrWhiteSpace($Config.activeEnv)) {
         return $Config.activeEnv
     }
-    # Fallback: most recent lastUsed (for configs not yet upgraded)
-    $best = $Config.udeConfigs |
-        Where-Object { $_.PSObject.Properties.Name -contains 'lastUsed' -and $_.lastUsed } |
-        Sort-Object { [datetime]$_.lastUsed } -Descending |
-        Select-Object -First 1
-    if ($best) { return $best.name }
-    # Last resort: first entry
+    # No active env set yet — fall back to the first configured entry.
     if ($Config.udeConfigs.Count -gt 0) { return $Config.udeConfigs[0].name }
     return $null
 }
