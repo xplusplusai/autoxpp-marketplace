@@ -15,6 +15,7 @@ public class UdeSwitchUiaNative {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
 
     public const int SW_SHOWMINIMIZED = 2;
     public const int SW_RESTORE = 9;
@@ -169,10 +170,19 @@ function Find-EditControl {
     return $edits[$Index]
 }
 
-function Minimize-Vs {
-    $p = Get-VsProcess
-    if ($p) { [UdeSwitchUiaNative]::MinimizeWindow($p.MainWindowHandle) | Out-Null }
+function Bring-SelfToFront {
+    # Return view to the agent's own terminal WITHOUT minimizing VS. Minimizing VS
+    # left the user unable to restore the window, so instead of hiding VS we raise
+    # our console window over it. Best-effort: depends on the console window being
+    # attached to the host terminal.
+    $h = [UdeSwitchUiaNative]::GetConsoleWindow()
+    if ($h -ne [IntPtr]::Zero) {
+        [UdeSwitchUiaNative]::ShowWindow($h, [UdeSwitchUiaNative]::SW_RESTORE) | Out-Null
+        [UdeSwitchUiaNative]::SetForegroundWindow($h) | Out-Null
+    }
 }
+# Back-compat: callers say Minimize-Vs, but we no longer minimize VS — we raise the terminal.
+Set-Alias Minimize-Vs Bring-SelfToFront
 
 function Show-Vs {
     $p = Get-VsProcess

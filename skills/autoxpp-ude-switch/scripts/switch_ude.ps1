@@ -20,6 +20,7 @@ param(
     [switch]$List,
     [switch]$Add,
     [switch]$NoDownload,
+    [switch]$CloseExisting,
     [ValidateSet('','always','ask','skip','skip-if-cached')]
     [string]$DownloadPolicy = ''
 )
@@ -73,13 +74,48 @@ try {
     # --- Phase B: VS interaction ---
     Write-UdeLog -LogFile $logFile -Step "phase-b" -Status "INFO" -Detail "VS interaction"
 
-    # Ensure VS is running
+    # Never operate on a pre-existing VS session. If VS already has a Dataverse
+    # connection it auto-reconnects and SKIPS the "Enter environment instance url"
+    # popup, so the switch would silently keep the old environment. We must start
+    # from a fresh VS session. This skill is interactive (not autonomous) and
+    # closing VS can lose unsaved work, so closing requires explicit user approval
+    # via -CloseExisting (the orchestrator asks the user, then re-runs with it).
+    $existingVs = @(Get-Process devenv -ErrorAction SilentlyContinue)
+    if ($existingVs.Count -gt 0) {
+        if (-not $CloseExisting) {
+            Write-Host "VS_ALREADY_OPEN: Visual Studio 2022 is already running ($($existingVs.Count) process(es))."
+            Write-Host "  A live Dataverse connection makes VS skip the instance-URL step, so the"
+            Write-Host "  switch must start from a fresh VS session. Closing VS may lose unsaved work."
+            Write-Host "  Get the user's approval, then re-run with -CloseExisting."
+            Write-UdeLog -LogFile $logFile -Step "vs-open" -Status "WAIT" -Detail "approval needed to close existing VS ($($existingVs.Count))"
+            exit 2
+        }
+        Write-Host "Closing existing VS2022 session(s) (user-approved)..."
+        foreach ($p in $existingVs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
+        Start-Sleep -Seconds 5
+        $still = @(Get-Process devenv -ErrorAction SilentlyContinue)
+        if ($still.Count -gt 0) {
+            Write-Host "  Graceful close timed out; forcing $($still.Count) process(es)..."
+            $still | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        }
+        Write-UdeLog -LogFile $logFile -Step "vs-close" -Status "OK" -Detail "closed existing VS; starting fresh"
+    }
+
+    # Launch a fresh VS session
     $vsPath = if ($ude.ContainsKey('vsPath')) { $ude.vsPath } else { "" }
     $launchTimeout = if ($ude.timeouts) { [int]$ude.timeouts.vsRestartSeconds } else { 120 }
 
     $launchResult = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
     Write-UdeLog -LogFile $logFile -Step "launch-vs" -Status "OK" -Detail "$launchResult"
     if ($LASTEXITCODE -ne 0) { throw "Failed to launch VS" }
+
+    # Ensure "Skip Discovery" is ON — required for the "Enter environment instance url"
+    # popup to appear during connect (Tools > Options > Power Platform Tools > General).
+    Write-Host "Showing VS to verify 'Skip Discovery' option..."
+    $sdOut = & "$PSScriptRoot\ensure_skip_discovery.ps1" -TimeoutSeconds 30
+    $sdOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "skip-discovery" -Status "INFO" -Detail $_ }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to ensure 'Skip Discovery' is enabled" }
 
     # Close any open solution (Show VS briefly for menu nav)
     Write-Host "Showing VS to close open solution..."
