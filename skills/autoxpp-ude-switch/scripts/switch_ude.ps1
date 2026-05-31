@@ -56,11 +56,13 @@ try {
 
     Write-UdeLog -LogFile $logFile -Step "resolve" -Status "OK" -Detail "url=$($ude.dataverseUrl) metadata=$($ude.customMetadataFolder) policy=$policy"
 
-    # Warn if metadata folder missing (don't block)
+    # Ensure the metadata folder from ude-configs.json exists (create if missing).
+    # This is the ModelStoreFolder we retarget the active config to in Phase C.
     if (-not (Test-Path $ude.customMetadataFolder)) {
-        Write-UdeLog -LogFile $logFile -Step "metadata-check" -Status "WARN" -Detail "folder not found: $($ude.customMetadataFolder)"
-        Write-Host "WARNING: customMetadataFolder does not exist: $($ude.customMetadataFolder)"
-        Write-Host "         Continuing — clone the repo before attempting a build."
+        New-Item -ItemType Directory -Path $ude.customMetadataFolder -Force | Out-Null
+        Write-UdeLog -LogFile $logFile -Step "metadata-create" -Status "OK" -Detail "created: $($ude.customMetadataFolder)"
+        Write-Host "Created customMetadataFolder: $($ude.customMetadataFolder)"
+        Write-Host "  (empty — clone the repo here before building)"
     }
 
     # Snapshot XPPConfig
@@ -162,30 +164,56 @@ try {
     }
 
     # --- Phase C: post-switch disk edits ---
-    Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "retargeting XPP config"
+    Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "resolving XPP config"
 
-    # Find the newly created XPP config JSON.
-    # VS names it by org ID (the Dataverse URL host) on first connect; on a
-    # re-switch it reuses the previously renamed {name}___*.json. Try the org ID
-    # first, then fall back to the friendly name.
-    $orgId = ([System.Uri]$ude.dataverseUrl).Host.Split('.')[0]
-    $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -ExpectedName $orgId
-    if ($LASTEXITCODE -ne 0) {
-        # Fallback: config may already be renamed to friendly name from a previous switch
-        $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -ExpectedName $Name
-    }
+    # Identify the config VS just created/updated by diffing the XPPConfig folder
+    # against the Phase A baseline — name-agnostic (VS may name it by org ID or by
+    # display name; we don't care which). This is the source with the correct
+    # FrameworkDirectory / RuntimePackagesDirectory for this environment.
+    $lkv = if ($ude.ContainsKey('lastKnownVersion')) { $ude.lastKnownVersion } else { "" }
+    $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -LastKnownVersion $lkv
     $diffOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "diff" -Status "INFO" -Detail $_ }
-    if ($LASTEXITCODE -ne 0) { throw "Could not find new XPP config JSON" }
+    if ($LASTEXITCODE -ne 0) { throw "Could not identify the XPP config VS created" }
 
-    $xppLine = ($diffOut | Where-Object { $_ -match '^XPP_JSON: ' }) -replace '^XPP_JSON: ', ''
-    if (-not $xppLine) { throw "diff_xppconfig did not emit XPP_JSON line" }
+    $srcXpp = ($diffOut | Where-Object { $_ -match '^XPP_JSON: ' }) -replace '^XPP_JSON: ', ''
+    if (-not $srcXpp) { throw "diff_xppconfig did not emit XPP_JSON line" }
 
-    # Extract version from filename
+    # Version comes from the file VS created.
     $ver = ""
-    $m = [regex]::Match([System.IO.Path]::GetFileNameWithoutExtension($xppLine), '^.+___([\d\.]+)$')
+    $m = [regex]::Match([System.IO.Path]::GetFileNameWithoutExtension($srcXpp), '___([\d\.]+)$')
     if ($m.Success) { $ver = $m.Groups[1].Value }
 
-    # Retarget ModelStoreFolder/DebugSourceFolder
+    # We own ONLY {UDE}___{ver}.json. Never rename or delete files VS made.
+    # If our file doesn't exist yet, create it by copying the VS-created one.
+    $xppDir  = Split-Path -Parent $srcXpp
+    $ourName = if ($ver) { "${Name}___${ver}.json" } else { "${Name}.json" }
+    $xppLine = Join-Path $xppDir $ourName
+
+    if ($srcXpp -ieq $xppLine) {
+        Write-Host "  VS used our name already: $ourName"
+        Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "vs-named $ourName"
+    } elseif (Test-Path $xppLine) {
+        Write-Host "  Using existing owned config: $ourName"
+        Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "exists $ourName"
+    } else {
+        Copy-Item -Path $srcXpp -Destination $xppLine -Force
+        Write-Host "  Created owned config: $ourName (copied from $(Split-Path -Leaf $srcXpp))"
+        # Cosmetic: point the Description at the friendly name for the dialog.
+        $srcLeaf = ([System.IO.Path]::GetFileNameWithoutExtension($srcXpp) -split '___')[0]
+        try {
+            $raw = [System.IO.File]::ReadAllText($xppLine, (New-Object System.Text.UTF8Encoding $false))
+            $jr  = $raw | ConvertFrom-Json
+            if (($jr.PSObject.Properties.Name -contains 'Description') -and $jr.Description) {
+                $jr.Description = $jr.Description -replace [regex]::Escape($srcLeaf), $Name
+                $out = ($jr | ConvertTo-Json -Depth 20) -replace ':  ', ': '
+                [System.IO.File]::WriteAllText($xppLine, $out, (New-Object System.Text.UTF8Encoding $false))
+            }
+        } catch { }
+        Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "created $ourName from $(Split-Path -Leaf $srcXpp)"
+    }
+
+    # Retarget ModelStoreFolder/DebugSourceFolder (+DefaultCompany) in OUR config to
+    # the customMetadataFolder from ude-configs.json.
     $company = if ($ude.ContainsKey('defaultCompany')) { $ude.defaultCompany } else { "" }
     $rtOut = & "$PSScriptRoot\retarget_xpp_config.ps1" `
         -XppJsonPath $xppLine `
@@ -194,43 +222,8 @@ try {
     $rtOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "retarget" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Retarget failed" }
 
-    # Rename XPP config to use the friendly name from ude-configs.json so the
-    # "Manage local XPP configurations" dialog shows {name} instead of the org ID.
-    # Skipped automatically on a re-switch (config already carries the friendly name).
-    $xppFileName = [System.IO.Path]::GetFileNameWithoutExtension($xppLine)
-    $xppOrgName = ($xppFileName -split '___')[0]
-    if ($xppOrgName -ne $Name) {
-        $xppVersion = ($xppFileName -split '___')[1]
-        $xppDir = Split-Path -Parent $xppLine
-        $newJsonName = "${Name}___${xppVersion}.json"
-        $newFolderName = "${Name}___${xppVersion}"
-        $newJsonPath = Join-Path $xppDir $newJsonName
-        $oldFolderPath = Join-Path $xppDir "${xppOrgName}___${xppVersion}"
-
-        # Rename JSON file
-        Rename-Item -Path $xppLine -NewName $newJsonName
-        Write-Host "  Renamed JSON: $xppOrgName -> $Name"
-
-        # Rename companion folder (if exists)
-        if (Test-Path $oldFolderPath) {
-            Rename-Item -Path $oldFolderPath -NewName $newFolderName
-            Write-Host "  Renamed folder: $xppOrgName -> $Name"
-        }
-
-        # Update Description inside JSON (replace org ID with friendly name)
-        $raw = [System.IO.File]::ReadAllText($newJsonPath, [System.Text.UTF8Encoding]::new($false))
-        $jr = $raw | ConvertFrom-Json
-        $jr.Description = $jr.Description -replace [regex]::Escape($xppOrgName), $Name
-        $output = ($jr | ConvertTo-Json -Depth 10) -replace ':  ', ': '
-        [System.IO.File]::WriteAllText($newJsonPath, $output, [System.Text.UTF8Encoding]::new($false))
-
-        $xppLine = $newJsonPath  # update for downstream use
-        Write-UdeLog -LogFile $logFile -Step "rename-config" -Status "OK" -Detail "renamed $xppOrgName -> $Name"
-    }
-
-    # Make this the "Current" XPP config via VS's own UI (Extensions > Dynamics 365 >
-    # Configure Metadata...). No direct registry writes — VS owns that state. The
-    # config now carries the friendly name on disk, so match the row by $Name.
+    # Make OUR config the active/Current one via VS's own UI (Extensions > Dynamics 365 >
+    # Configure Metadata...). No direct registry writes — VS owns that state.
     $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 30
     $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Failed to set current XPP config via VS UI" }
