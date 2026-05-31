@@ -17,11 +17,15 @@ description: >
 
 ## TOP-PRIORITY BEHAVIORAL RULES
 
-1. **Show VS / Hide VS discipline** (same as `autoxpp-build`): VS stays minimized except during the brief moment UIA needs focus. The user watches the terminal; if VS is foregrounded, they are blind. Before every VS-touching action: print "Showing VS to [action]", act, hide VS, print result.
+1. **Show VS / return-to-terminal discipline** (revised): **NEVER minimize VS** — minimizing leaves the user unable to restore the window. Bring VS to the foreground only for the brief moment UIA needs focus (`Show-Vs`), then **raise the agent's own terminal back over it** (`Bring-SelfToFront`; the legacy `Minimize-Vs` is now an alias for it and no longer minimizes). VS stays open behind the terminal. Before every VS-touching action: print "Showing VS to [action]", act, bring self to front, print result.
 2. **Never skip Phase C retargeting.** VS auto-generates the new XPP config JSON with `ModelStoreFolder` defaulting to whichever path it last saw. Without retargeting, multiple UDEs share one custom metadata folder and builds pick up the wrong customer's code.
 3. **Default download policy = `ask` in v1.** Do not auto-click No on "Client assets download" unless `--no-download` flag is set. Safety first; the download-skip optimization ships in v2 after validation.
 
 4. **UIA Retry Before Escalate.** The most common cause of a single UIA failure is human mouse interference, not a broken VS state. When a UIA action fails (menu didn't open, button not found, click had no effect): wait 3 seconds, retry the same action (up to 3 attempts total). Only on 3rd consecutive failure: take a screenshot, diagnose, consider recovery. NEVER restart VS, kill processes, or reconnect on first UIA failure.
+
+5. **"Skip Discovery" must be ON — the whole flow depends on it.** `Tools → Options → Power Platform Tools → General → ☑ Skip Discovery when connecting to Dataverse`. With it ON, VS shows the **"Enter environment instance url"** popup that `handle_url_popup.ps1` fills. With it OFF, that popup never appears and the switch cannot target a specific environment. Verify it is checked before connecting (the `ensure_skip_discovery.ps1` pre-flight enforces this).
+
+6. **Always start from a fresh VS session — never reuse an open VS.** If VS already has a Dataverse connection it auto-reconnects and **skips** the instance-URL popup, silently keeping the old environment. So if `devenv` is already running, `switch_ude.ps1` exits **2**; the orchestrator must get the user's **explicit approval** (this skill is interactive, not autonomous, and unsaved VS work can be lost), then re-run with **`-CloseExisting`**, which closes VS and launches fresh.
 
 ---
 
@@ -43,7 +47,8 @@ See `DESIGN.md` in this folder for the full design rationale.
 /autoxpp-ude-switch --current        → show current active UDE
 /autoxpp-ude-switch --list           → list configured UDEs
 /autoxpp-ude-switch --add            → interactive add flow
-/autoxpp-ude-switch <name> --no-download   → skip metadata download (warn)
+/autoxpp-ude-switch <name> --no-download     → skip metadata download (warn)
+/autoxpp-ude-switch <name> --close-existing  → if VS2022 is already open, close it first, then switch (fresh session)
 ```
 
 ## Prerequisites (one-time per machine, NOT automated)
@@ -78,10 +83,13 @@ All scripts live in `scripts/` and follow the established autoxpp-* pattern:
 
 ```powershell
 pwsh "scripts/switch_ude.ps1" -Name "<env-name>"
+pwsh "scripts/switch_ude.ps1" -Name "<env-name>" -CloseExisting   # caller-approved: close an already-open VS, then switch
 pwsh "scripts/switch_ude.ps1" -Current
 pwsh "scripts/switch_ude.ps1" -List
 pwsh "scripts/switch_ude.ps1" -Add
 ```
+
+**`-CloseExisting` (skill option `--close-existing`):** by default, if VS2022 is already open the switch stops with **exit 2** so the orchestrator can get the user's approval (closing VS can lose unsaved work). Pass `-CloseExisting` when closing has already been approved — it closes the open session and starts fresh without the exit-2 round-trip. Use it for automation; omit it for interactive safety.
 
 ### Script inventory
 
