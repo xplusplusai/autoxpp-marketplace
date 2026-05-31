@@ -164,8 +164,16 @@ try {
     # --- Phase C: post-switch disk edits ---
     Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "retargeting XPP config"
 
-    # Find the newly created XPP config JSON
-    $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -ExpectedName $Name
+    # Find the newly created XPP config JSON.
+    # VS names it by org ID (the Dataverse URL host) on first connect; on a
+    # re-switch it reuses the previously renamed {name}___*.json. Try the org ID
+    # first, then fall back to the friendly name.
+    $orgId = ([System.Uri]$ude.dataverseUrl).Host.Split('.')[0]
+    $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -ExpectedName $orgId
+    if ($LASTEXITCODE -ne 0) {
+        # Fallback: config may already be renamed to friendly name from a previous switch
+        $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -ExpectedName $Name
+    }
     $diffOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "diff" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Could not find new XPP config JSON" }
 
@@ -185,6 +193,47 @@ try {
         -DefaultCompany $company
     $rtOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "retarget" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Retarget failed" }
+
+    # Rename XPP config to use the friendly name from ude-configs.json so the
+    # "Manage local XPP configurations" dialog shows {name} instead of the org ID.
+    # Skipped automatically on a re-switch (config already carries the friendly name).
+    $xppFileName = [System.IO.Path]::GetFileNameWithoutExtension($xppLine)
+    $xppOrgName = ($xppFileName -split '___')[0]
+    if ($xppOrgName -ne $Name) {
+        $xppVersion = ($xppFileName -split '___')[1]
+        $xppDir = Split-Path -Parent $xppLine
+        $newJsonName = "${Name}___${xppVersion}.json"
+        $newFolderName = "${Name}___${xppVersion}"
+        $newJsonPath = Join-Path $xppDir $newJsonName
+        $oldFolderPath = Join-Path $xppDir "${xppOrgName}___${xppVersion}"
+
+        # Rename JSON file
+        Rename-Item -Path $xppLine -NewName $newJsonName
+        Write-Host "  Renamed JSON: $xppOrgName -> $Name"
+
+        # Rename companion folder (if exists)
+        if (Test-Path $oldFolderPath) {
+            Rename-Item -Path $oldFolderPath -NewName $newFolderName
+            Write-Host "  Renamed folder: $xppOrgName -> $Name"
+        }
+
+        # Update Description inside JSON (replace org ID with friendly name)
+        $raw = [System.IO.File]::ReadAllText($newJsonPath, [System.Text.UTF8Encoding]::new($false))
+        $jr = $raw | ConvertFrom-Json
+        $jr.Description = $jr.Description -replace [regex]::Escape($xppOrgName), $Name
+        $output = ($jr | ConvertTo-Json -Depth 10) -replace ':  ', ': '
+        [System.IO.File]::WriteAllText($newJsonPath, $output, [System.Text.UTF8Encoding]::new($false))
+
+        $xppLine = $newJsonPath  # update for downstream use
+        Write-UdeLog -LogFile $logFile -Step "rename-config" -Status "OK" -Detail "renamed $xppOrgName -> $Name"
+    }
+
+    # Make this the "Current" XPP config via VS's own UI (Extensions > Dynamics 365 >
+    # Configure Metadata...). No direct registry writes — VS owns that state. The
+    # config now carries the friendly name on disk, so match the row by $Name.
+    $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 30
+    $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to set current XPP config via VS UI" }
 
     # Update ude-configs.json lastUsed
     Update-UdeLastUsed -Name $Name -Version $ver
