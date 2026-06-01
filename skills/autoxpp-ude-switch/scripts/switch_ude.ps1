@@ -28,6 +28,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.ps1"   # Show-Vs / Bring-SelfToFront (Minimize-Vs alias) are called directly below
 
 # --- Mode dispatch ---
 if ($List)    { & "$PSScriptRoot\list_udes.ps1"; exit $LASTEXITCODE }
