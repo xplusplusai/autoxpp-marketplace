@@ -74,14 +74,32 @@ try {
     # --- Phase B: VS interaction ---
     Write-UdeLog -LogFile $logFile -Step "phase-b" -Status "INFO" -Detail "VS interaction"
 
-    # Never operate on a pre-existing VS session. If VS already has a Dataverse
+    # Never operate on a PRE-EXISTING VS session: if VS already has a Dataverse
     # connection it auto-reconnects and SKIPS the "Enter environment instance url"
     # popup, so the switch would silently keep the old environment. We must start
-    # from a fresh VS session. This skill is interactive (not autonomous) and
-    # closing VS can lose unsaved work, so closing requires explicit user approval
-    # via -CloseExisting (the orchestrator asks the user, then re-runs with it).
+    # from a fresh VS session. Closing VS can lose unsaved work, so closing a
+    # pre-existing instance requires explicit user approval via -CloseExisting.
+    #
+    # Idempotent (P-8): if the VS already running is the fresh one WE launched
+    # earlier in this same operation (tracked by a recent PID sentinel), reuse it
+    # instead of closing+relaunching again. This avoids needless restarts and the
+    # skipped re-approval seen when the script is retried after a partial failure.
+    $freshPidFile = Join-Path (Get-UdeLogDir) "fresh-vs.pid"
+    $ourFreshPid  = ""
+    if (Test-Path $freshPidFile) {
+        $ageMin = ((Get-Date) - (Get-Item $freshPidFile).LastWriteTime).TotalMinutes
+        if ($ageMin -lt 20) { $ourFreshPid = (Get-Content -Raw $freshPidFile).Trim() }
+    }
+
     $existingVs = @(Get-Process devenv -ErrorAction SilentlyContinue)
-    if ($existingVs.Count -gt 0) {
+    $reuseFresh = ($existingVs.Count -gt 0 -and $ourFreshPid -and
+                   ($existingVs | Where-Object { "$($_.Id)" -eq $ourFreshPid }))
+
+    if ($reuseFresh) {
+        Write-Host "Reusing the fresh VS we launched earlier (pid=$ourFreshPid) - no restart needed."
+        Write-UdeLog -LogFile $logFile -Step "vs-reuse" -Status "OK" -Detail "reuse fresh pid=$ourFreshPid"
+    }
+    elseif ($existingVs.Count -gt 0) {
         if (-not $CloseExisting) {
             Write-Host "VS_ALREADY_OPEN: Visual Studio 2022 is already running ($($existingVs.Count) process(es))."
             Write-Host "  A live Dataverse connection makes VS skip the instance-URL step, so the"
@@ -91,6 +109,7 @@ try {
             exit 2
         }
         Write-Host "Closing existing VS2022 session(s) (user-approved)..."
+        Remove-Item $freshPidFile -ErrorAction SilentlyContinue
         foreach ($p in $existingVs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
         Start-Sleep -Seconds 5
         $still = @(Get-Process devenv -ErrorAction SilentlyContinue)
@@ -102,13 +121,24 @@ try {
         Write-UdeLog -LogFile $logFile -Step "vs-close" -Status "OK" -Detail "closed existing VS; starting fresh"
     }
 
-    # Launch a fresh VS session
+    # Launch a fresh VS session (no-op if we are reusing one already running)
     $vsPath = if ($ude.ContainsKey('vsPath')) { $ude.vsPath } else { "" }
     $launchTimeout = if ($ude.timeouts) { [int]$ude.timeouts.vsRestartSeconds } else { 120 }
 
     $launchResult = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
     Write-UdeLog -LogFile $logFile -Step "launch-vs" -Status "OK" -Detail "$launchResult"
     if ($LASTEXITCODE -ne 0) { throw "Failed to launch VS" }
+
+    # Record the fresh VS PID so a retry reuses it instead of restarting (P-8).
+    $freshVs = Get-Process devenv -ErrorAction SilentlyContinue |
+        Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+    if ($freshVs) { Set-Content -Path $freshPidFile -Value $freshVs.Id -Encoding ASCII }
+
+    # Get a freshly-launched VS past its Start Window / startup dialogs so the menu
+    # bar exists for the steps below (P-4). No-op if VS is already at the main IDE.
+    $swOut = & "$PSScriptRoot\dismiss_start_window.ps1" -TimeoutSeconds 60
+    $swOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "start-window" -Status "INFO" -Detail $_ }
+    if ($LASTEXITCODE -ne 0) { throw "VS Start Window could not be dismissed (no menu bar available)" }
 
     # Ensure "Skip Discovery" is ON - required for the "Enter environment instance url"
     # popup to appear during connect (Tools > Options > Power Platform Tools > General).
@@ -276,6 +306,7 @@ try {
     Write-Host "========================================"
     Write-Host "If VS is still running, restart it to pick up the retargeted ModelStoreFolder."
     Write-UdeLog -LogFile $logFile -Step "done" -Status "OK" -Detail "name=$Name version=$ver"
+    Remove-Item (Join-Path (Get-UdeLogDir) "fresh-vs.pid") -ErrorAction SilentlyContinue  # clear fresh-VS sentinel on success (P-8)
     exit 0
 
 } catch {

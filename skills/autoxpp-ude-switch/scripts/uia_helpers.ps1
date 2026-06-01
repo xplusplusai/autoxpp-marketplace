@@ -100,6 +100,56 @@ function Wait-ForChildWindow {
     return $null
 }
 
+function Find-AnyWindow {
+    # Find a Window matching any NameContains substring, searching BOTH the desktop's
+    # top-level windows AND inside the VS process tree (Window or Pane). Power Platform
+    # dialogs vary: the URL popup is a top-level window; the connect/select wizard is
+    # "Configure Microsoft Power Platform Solution" which may be top-level or embedded.
+    param([Parameter(Mandatory=$true)][string[]]$NameContains)
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $winCond = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Window)
+    foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)) {
+        $nm = $w.Current.Name
+        if (-not $nm) { continue }
+        foreach ($needle in $NameContains) { if ($nm -like "*$needle*") { return $w } }
+    }
+    $vs = Get-VsProcess
+    if ($vs) {
+        $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+        if ($vsElem) {
+            $w = Find-ChildWindow -Parent $vsElem -NameContains $NameContains
+            if ($w) { return $w }
+        }
+    }
+    return $null
+}
+
+function Wait-AnyWindow {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$NameContains,
+        [int]$TimeoutSeconds = 30
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $w = Find-AnyWindow -NameContains $NameContains
+        if ($w) { return $w }
+        Start-Sleep -Milliseconds 500
+    }
+    return $null
+}
+
+function Find-ByAutomationId {
+    param(
+        [Parameter(Mandatory=$true)]$Parent,
+        [Parameter(Mandatory=$true)][string]$AutomationId
+    )
+    $cond = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $AutomationId)
+    return $Parent.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+}
+
 function Find-ButtonByName {
     param(
         [Parameter(Mandatory=$true)]$Parent,
