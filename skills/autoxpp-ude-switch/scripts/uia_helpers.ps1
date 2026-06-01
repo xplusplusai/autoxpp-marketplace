@@ -150,6 +150,65 @@ function Find-ByAutomationId {
     return $Parent.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
 }
 
+function Dismiss-UnexpectedDialog {
+    # Safely close ANY modal dialog that is NOT a documented part of the UDE-switch
+    # flow (e.g. "Please install Modeling SDK", update/error/notice popups) so an
+    # undocumented dialog can't block the switch. We do NOT touch:
+    #   - the flow's own dialogs (handled by their step scripts) - see $known,
+    #   - the main VS window (matched by handle / menu bar),
+    #   - tool windows or anything without a real dialog action button.
+    # A window only qualifies as a dialog if it has an action button in $action
+    # (window chrome Minimize/Maximize/Close never qualify). Returns count dismissed.
+    $known = @(
+        'Configure Microsoft Power Platform Solution','Configure Power Platform Solution',
+        'Enter environment instance url','environment instance','Options',
+        'Select Solution','Reconnect','Power Platform Tools','Connect to Dataverse',
+        'Client assets','Pick an account','Sign in','choose an account')
+    $action = @('OK','Ok','Continue','Cancel','Yes','No')   # qualifies a window as a dialog
+    $prefer = @('Cancel','No','OK','Ok','Continue','Yes')    # least-destructive dismiss order (never chrome Close)
+
+    $AE = [System.Windows.Automation.AutomationElement]
+    $TS = [System.Windows.Automation.TreeScope]
+    $CT = [System.Windows.Automation.ControlType]
+    $winCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
+    $btnCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+    $mbCond  = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::MenuBar)
+
+    $vs = Get-VsProcess
+    $mainHwnd = if ($vs) { [int64]$vs.MainWindowHandle } else { 0 }
+    $parents = @($AE::RootElement)
+    if ($vs) { $vsElem = Get-VsAutomationElement -VsPid $vs.Id; if ($vsElem) { $parents += $vsElem } }
+
+    $count = 0
+    foreach ($parent in $parents) {
+        foreach ($w in @($parent.FindAll($TS::Children, $winCond))) {
+            $nm = "" + $w.Current.Name
+            # 1) never touch the main VS window
+            $hwnd = 0; try { $hwnd = [int64]$w.Current.NativeWindowHandle } catch {}
+            if ($mainHwnd -ne 0 -and $hwnd -eq $mainHwnd) { continue }
+            if ($w.FindFirst($TS::Descendants, $mbCond)) { continue }   # has a menu bar => main IDE window
+            # 2) leave documented flow dialogs alone
+            $skip = $false
+            foreach ($k in $known) { if ($nm -like "*$k*") { $skip = $true; break } }
+            if ($skip) { continue }
+            # 3) qualify + pick a safe action button (else it is not an auto-dismissable dialog)
+            $btns = @($w.FindAll($TS::Descendants, $btnCond))
+            $target = $null
+            foreach ($pref in $prefer) {
+                foreach ($b in $btns) { if (("" + $b.Current.Name).Trim() -eq $pref) { $target = $b; break } }
+                if ($target) { break }
+            }
+            if (-not $target) { continue }
+            try {
+                $target.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                Write-Host "  Dismissed undocumented dialog '$nm' (clicked '$($target.Current.Name)')"
+                $count++; Start-Sleep -Milliseconds 600
+            } catch {}
+        }
+    }
+    return $count
+}
+
 function Find-ButtonByName {
     param(
         [Parameter(Mandatory=$true)]$Parent,
