@@ -41,6 +41,8 @@ public class SkipDiscNative {
 }
 "@ -ErrorAction SilentlyContinue
 
+. "$PSScriptRoot\uia_helpers.ps1"   # Dismiss-UnexpectedDialog (close undocumented blocking dialogs)
+
 # --- Get VS process ---
 $vs = Get-Process devenv -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } |
@@ -79,24 +81,12 @@ foreach ($w in $windows) {
 
 # --- Pre-flight: do NOT SendKeys unless VS is at the main IDE ---
 # A fresh VS shows the Start Window (no menu bar); Alt+T,o would land in the
-# "Open recent" search box. Dismiss any modal dialog (e.g. Modeling SDK), then
-# require a menu bar; otherwise fail WITHOUT typing.
+# "Open recent" search box. Close any UNDOCUMENTED modal dialog (generic + safe),
+# then require a menu bar; otherwise fail WITHOUT typing.
+$null = Dismiss-UnexpectedDialog
 $mbCond = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
     [System.Windows.Automation.ControlType]::MenuBar)
-$btnCondPF = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [System.Windows.Automation.ControlType]::Button)
-foreach ($w in $vsElem.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)) {
-    if ($w.Current.Name -eq 'Microsoft Visual Studio') {
-        $okb = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $btnCondPF)
-        if ($okb) {
-            Write-Host "Dismissing modal dialog before Options..."
-            try { $okb.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-            Start-Sleep -Milliseconds 800
-        }
-    }
-}
 if (-not $vsElem.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $mbCond)) {
     Write-Host "SKIP_DISCOVERY_FAIL VS is not at the main IDE (Start Window); not sending keys. Run dismiss_start_window.ps1 first."
     exit 1
