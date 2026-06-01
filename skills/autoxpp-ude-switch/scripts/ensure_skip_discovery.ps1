@@ -80,15 +80,13 @@ foreach ($w in $windows) {
 }
 
 # --- Pre-flight: do NOT SendKeys unless VS is at the main IDE ---
-# A fresh VS shows the Start Window (no menu bar); Alt+T,o would land in the
+# A fresh VS shows the Start Window (no usable menu bar); Alt+T,o would land in the
 # "Open recent" search box. Close any UNDOCUMENTED modal dialog (generic + safe),
-# then require a menu bar; otherwise fail WITHOUT typing.
+# then require that we are NOT at the Start Window (checked via the GetToCodeWorkflowView
+# control, not the unreliable "MenuBar exists"). Otherwise fail WITHOUT typing.
 $null = Dismiss-UnexpectedDialog
-$mbCond = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [System.Windows.Automation.ControlType]::MenuBar)
-if (-not $vsElem.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $mbCond)) {
-    Write-Host "SKIP_DISCOVERY_FAIL VS is not at the main IDE (Start Window); not sending keys. Run dismiss_start_window.ps1 first."
+if (Test-VsStartWindow) {
+    Write-Host "SKIP_DISCOVERY_FAIL VS is at the Start Window (no menu); run dismiss_start_window.ps1 first - not sending keys."
     exit 1
 }
 
