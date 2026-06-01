@@ -31,7 +31,7 @@ while ((Get-Date) -lt $deadline) {
     $picker = Find-ChildWindow -Parent $vsElem -NameContains @('Sign in','Pick an account','choose an account')
     if ($picker) { Write-Host "MFA_REQUIRED name=$($picker.Current.Name)"; exit 2 }
 
-    # Continue waiting — capture current Power Platform Tools dialog text for diagnostics
+    # Continue waiting - capture current Power Platform Tools dialog text for diagnostics
     $ppt = Find-ChildWindow -Parent $vsElem -NameContains @('Power Platform Tools','Connect to Dataverse')
     if ($ppt) {
         # Read any text descendants to report progress

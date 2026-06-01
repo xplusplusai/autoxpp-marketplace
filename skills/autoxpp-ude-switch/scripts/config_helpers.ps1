@@ -44,7 +44,7 @@ function Save-UdeConfigs {
 
 function Resolve-Ude {
     # Returns a hashtable of the per-UDE settings for $Name. All settings are per-UDE
-    # in schemaVersion 3 — there is no defaults-merge.
+    # in schemaVersion 3 - there is no defaults-merge.
     param(
         [Parameter(Mandatory=$true)]$Config,
         [Parameter(Mandatory=$true)][string]$Name
@@ -77,7 +77,7 @@ function Get-ActiveUdeName {
         -not [string]::IsNullOrWhiteSpace($Config.activeEnv)) {
         return $Config.activeEnv
     }
-    # No active env set yet — fall back to the first configured entry.
+    # No active env set yet - fall back to the first configured entry.
     if ($Config.udeConfigs.Count -gt 0) { return $Config.udeConfigs[0].name }
     return $null
 }

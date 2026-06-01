@@ -33,7 +33,7 @@ function Read-Optional {
     $p = if ($Default) { "$Prompt [$Default, or Enter to skip]" } else { "$Prompt (optional, Enter to skip)" }
     $v = Read-Host $p
     if (-not $v -and $Default) { return $Default }
-    return ($v ?? "").Trim()
+    return ([string]$v).Trim()
 }
 
 $cfg = Load-UdeConfigs
@@ -59,7 +59,7 @@ if (-not $MsAccount)   { $MsAccount   = Read-Optional "MS account for sign-in" }
 if (-not $SolutionName){ $SolutionName= Read-Optional "Solution name" "Default" }
 if (-not $DefaultCompany) { $DefaultCompany = Read-Optional "Default company (e.g. USMF)" }
 
-# Build entry — store every non-empty per-UDE field
+# Build entry - store every non-empty per-UDE field
 $entry = [ordered]@{
     name                 = $Name
     description          = $Description
@@ -69,7 +69,7 @@ $entry = [ordered]@{
 if ($FoUrl)          { $entry.foUrl = $FoUrl }
 if ($DefaultCompany) { $entry.defaultCompany = $DefaultCompany }
 if ($MsAccount)      { $entry.msAccount = $MsAccount }
-# solutionName defaults to "Default" in code — only persist a non-default value
+# solutionName defaults to "Default" in code - only persist a non-default value
 if ($SolutionName -and $SolutionName -ne "Default") { $entry.solutionName = $SolutionName }
 
 $entryObj = [PSCustomObject]$entry

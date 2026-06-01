@@ -38,7 +38,7 @@ foreach ($mi in $items2) {
 }
 
 if (-not $close) {
-    # No "Close Solution" item — likely nothing is open
+    # No "Close Solution" item - likely nothing is open
     try { $fileMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
     Write-Host "SOLUTION_NONE"
     exit 0
@@ -55,7 +55,7 @@ try {
     $close.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Milliseconds 500
 
-    # If VS asks "Save changes?" — handle Yes/No/Cancel
+    # If VS asks "Save changes?" - handle Yes/No/Cancel
     Start-Sleep -Milliseconds 500
     $vsElem2 = Get-VsAutomationElement -VsPid $vs.Id
     $saveDlg = Find-ChildWindow -Parent $vsElem2 -NameContains @('Microsoft Visual Studio','Save')

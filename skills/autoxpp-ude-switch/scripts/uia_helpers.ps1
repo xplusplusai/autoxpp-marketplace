@@ -64,7 +64,7 @@ function Find-ChildWindow {
     # Searches BOTH ControlType.Window (true modal dialogs like "Client assets download")
     # AND ControlType.Pane (Power Platform Tools embedded wizards like Login / URL / Select
     # Solution, which render as panes inside the VS tool window, not separate Windows).
-    # Window is preferred when both match — try Window-type matches first, then Pane.
+    # Window is preferred when both match - try Window-type matches first, then Pane.
     param(
         [Parameter(Mandatory=$true)]$Parent,
         [Parameter(Mandatory=$true)][string[]]$NameContains
@@ -181,7 +181,7 @@ function Bring-SelfToFront {
         [UdeSwitchUiaNative]::SetForegroundWindow($h) | Out-Null
     }
 }
-# Back-compat: callers say Minimize-Vs, but we no longer minimize VS — we raise the terminal.
+# Back-compat: callers say Minimize-Vs, but we no longer minimize VS - we raise the terminal.
 Set-Alias Minimize-Vs Bring-SelfToFront
 
 function Show-Vs {

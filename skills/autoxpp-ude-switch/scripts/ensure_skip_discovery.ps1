@@ -101,7 +101,7 @@ while ((Get-Date) -lt $deadline) {
 
 if (-not $optionsDlg) {
     Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear"
-    # no-minimize: leave VS as-is (never minimize VS — user can't restore it)
+    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
     exit 1
 }
 
@@ -197,7 +197,7 @@ if (-not $skipCb) {
     }
     [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
     Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS — user can't restore it)
+    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
     Write-Host "SKIP_DISCOVERY_FAIL 'Skip Discovery' checkbox not found"
     exit 1
 }
@@ -212,7 +212,7 @@ if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     Write-Host "SKIP_DISCOVERY_ALREADY_CHECKED"
     [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
     Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS — user can't restore it)
+    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
     exit 0
 }
 
@@ -226,7 +226,7 @@ $newState = $togglePattern.Current.ToggleState
 if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
     [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
     Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS — user can't restore it)
+    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
     Write-Host "SKIP_DISCOVERY_FAIL toggle did not stick (state=$newState)"
     exit 1
 }
@@ -284,6 +284,6 @@ if ($stillOpen) {
     Start-Sleep -Milliseconds 500
 }
 
-# no-minimize: leave VS as-is (never minimize VS — user can't restore it)
+# no-minimize: leave VS as-is (never minimize VS - user can't restore it)
 Write-Host "SKIP_DISCOVERY_CHECKED"
 exit 0

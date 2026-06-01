@@ -55,7 +55,7 @@ foreach ($mi in $items2) {
 }
 
 if (-not $target) {
-    Write-Host "MENU_ERROR 'Connect to online Dataverse' item not found — is Power Platform Tools installed?"
+    Write-Host "MENU_ERROR 'Connect to online Dataverse' item not found - is Power Platform Tools installed?"
     # Collapse the Tools menu to leave UI clean
     try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
     exit 1

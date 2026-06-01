@@ -16,7 +16,7 @@
 #
 # Emits:
 #   DOWNLOAD_PROMPT_HANDLED choice=<Yes|No> version=<x.y.z> cached=<yes|no>
-#   DOWNLOAD_PROMPT_ABSENT (version already downloaded — no prompt shown)
+#   DOWNLOAD_PROMPT_ABSENT (version already downloaded - no prompt shown)
 #   DOWNLOAD_PROMPT_ERROR <reason>
 
 param(
@@ -35,7 +35,7 @@ $vsElem = Get-VsAutomationElement -VsPid $vs.Id
 $dialog = Wait-ForChildWindow -Parent $vsElem -NameContains @('Client assets download') -TimeoutSeconds $TimeoutSeconds
 
 if (-not $dialog) {
-    Write-Host "DOWNLOAD_PROMPT_ABSENT (no prompt within ${TimeoutSeconds}s — assets likely already cached)"
+    Write-Host "DOWNLOAD_PROMPT_ABSENT (no prompt within ${TimeoutSeconds}s - assets likely already cached)"
     exit 0
 }
 

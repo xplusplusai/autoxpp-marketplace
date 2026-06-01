@@ -17,7 +17,7 @@ $vsElem = Get-VsAutomationElement -VsPid $vs.Id
 $dialog = Wait-ForChildWindow -Parent $vsElem -NameContains @('Reconnect to Dataverse') -TimeoutSeconds $TimeoutSeconds
 
 if (-not $dialog) {
-    Write-Host "RECONNECT_DIALOG_ABSENT (no prior connection to reuse — proceeding to Login)"
+    Write-Host "RECONNECT_DIALOG_ABSENT (no prior connection to reuse - proceeding to Login)"
     exit 0
 }
 

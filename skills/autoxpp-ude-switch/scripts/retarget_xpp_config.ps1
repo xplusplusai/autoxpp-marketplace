@@ -83,7 +83,7 @@ if (-not $changed) {
 $backup = "$XppJsonPath.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
 Copy-Item -Path $XppJsonPath -Destination $backup -Force
 
-# Write pretty JSON, no BOM — VS rejects a UTF-8 BOM in XPP config files
+# Write pretty JSON, no BOM - VS rejects a UTF-8 BOM in XPP config files
 # ("Configuration file ... is not valid. Default values will be used.").
 # The -replace also normalizes PowerShell's double-space-after-colon quirk.
 $newJson = ($j | ConvertTo-Json -Depth 20) -replace ':  ', ': '

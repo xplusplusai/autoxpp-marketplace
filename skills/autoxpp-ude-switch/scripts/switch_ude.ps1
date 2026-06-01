@@ -63,7 +63,7 @@ try {
         New-Item -ItemType Directory -Path $ude.customMetadataFolder -Force | Out-Null
         Write-UdeLog -LogFile $logFile -Step "metadata-create" -Status "OK" -Detail "created: $($ude.customMetadataFolder)"
         Write-Host "Created customMetadataFolder: $($ude.customMetadataFolder)"
-        Write-Host "  (empty — clone the repo here before building)"
+        Write-Host "  (empty - clone the repo here before building)"
     }
 
     # Snapshot XPPConfig
@@ -110,7 +110,7 @@ try {
     Write-UdeLog -LogFile $logFile -Step "launch-vs" -Status "OK" -Detail "$launchResult"
     if ($LASTEXITCODE -ne 0) { throw "Failed to launch VS" }
 
-    # Ensure "Skip Discovery" is ON — required for the "Enter environment instance url"
+    # Ensure "Skip Discovery" is ON - required for the "Enter environment instance url"
     # popup to appear during connect (Tools > Options > Power Platform Tools > General).
     Write-Host "Showing VS to verify 'Skip Discovery' option..."
     $sdOut = & "$PSScriptRoot\ensure_skip_discovery.ps1" -TimeoutSeconds 30
@@ -160,7 +160,7 @@ try {
         Write-UdeLog -LogFile $logFile -Step "mfa" -Status "WAIT" -Detail "user action required"
         exit 2
     }
-    if ($LASTEXITCODE -ne 0) { throw "Validation timed out — Dataverse not responding" }
+    if ($LASTEXITCODE -ne 0) { throw "Validation timed out - Dataverse not responding" }
 
     # Select Solution
     Show-Vs
@@ -182,7 +182,7 @@ try {
     $downloadTriggered = ($dlOut -join "`n") -match 'choice=Yes'
     if ($downloadTriggered) {
         Write-Host "Download started. This typically takes ~20 minutes for a new platform version."
-        Write-Host "VS may auto-exit after completion — skill will relaunch it."
+        Write-Host "VS may auto-exit after completion - skill will relaunch it."
 
         $vs = Get-Process devenv -ErrorAction SilentlyContinue |
             Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
@@ -192,7 +192,7 @@ try {
         $exitOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "dl-wait" -Status "INFO" -Detail $_ }
 
         if ($exitOut -match 'VS_EXITED') {
-            Write-Host "VS exited — waiting 15s for extension registration, then relaunching..."
+            Write-Host "VS exited - waiting 15s for extension registration, then relaunching..."
             Start-Sleep -Seconds 15
             $relaunch = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
             $relaunch | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "vs-relaunch" -Status "INFO" -Detail $_ }
@@ -203,7 +203,7 @@ try {
     Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "resolving XPP config"
 
     # Identify the config VS just created/updated by diffing the XPPConfig folder
-    # against the Phase A baseline — name-agnostic (VS may name it by org ID or by
+    # against the Phase A baseline - name-agnostic (VS may name it by org ID or by
     # display name; we don't care which). This is the source with the correct
     # FrameworkDirectory / RuntimePackagesDirectory for this environment.
     $lkv = if ($ude.ContainsKey('lastKnownVersion')) { $ude.lastKnownVersion } else { "" }
@@ -259,7 +259,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Retarget failed" }
 
     # Make OUR config the active/Current one via VS's own UI (Extensions > Dynamics 365 >
-    # Configure Metadata...). No direct registry writes — VS owns that state.
+    # Configure Metadata...). No direct registry writes - VS owns that state.
     $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 30
     $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Failed to set current XPP config via VS UI" }

@@ -23,7 +23,7 @@ if ($VsPid -eq 0) {
     $VsPid = $p.Id
 }
 
-Write-Host "Waiting for VS (pid=$VsPid) to exit — up to ${TimeoutSeconds}s"
+Write-Host "Waiting for VS (pid=$VsPid) to exit - up to ${TimeoutSeconds}s"
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 
 while ((Get-Date) -lt $deadline) {

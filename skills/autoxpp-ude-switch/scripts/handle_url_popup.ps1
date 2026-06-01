@@ -37,7 +37,7 @@ if (-not $edit) {
 $setResult = Set-EditText -Edit $edit -Text $Url
 Start-Sleep -Milliseconds 300
 
-# Click OK (label is "Ok" per screenshot — verify case)
+# Click OK (label is "Ok" per screenshot - verify case)
 $btn = Find-ButtonByName -Parent $popup -Name "Ok"
 if (-not $btn) { $btn = Find-ButtonByName -Parent $popup -Name "OK" }
 if (-not $btn) {
