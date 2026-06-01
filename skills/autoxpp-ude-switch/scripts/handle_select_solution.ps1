@@ -78,7 +78,7 @@ if (-not $picked) {
 }
 
 if (-not $picked) {
-    Write-Host "SELECT_SOLUTION_ERROR Could not select '$SolutionName' — ListItems found: $($items.Count)"
+    Write-Host "SELECT_SOLUTION_ERROR Could not select '$SolutionName' - ListItems found: $($items.Count)"
     exit 1
 }
 

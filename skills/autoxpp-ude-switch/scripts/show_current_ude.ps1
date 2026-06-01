@@ -9,7 +9,7 @@
 
 $xppDir = Get-XppConfigDir
 if (-not (Test-Path $xppDir)) {
-    Write-Host "No XPPConfig folder at $xppDir — VS UDE has never been configured on this machine."
+    Write-Host "No XPPConfig folder at $xppDir - VS UDE has never been configured on this machine."
     exit 0
 }
 

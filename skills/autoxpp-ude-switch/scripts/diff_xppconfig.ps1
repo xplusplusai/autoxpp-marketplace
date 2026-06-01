@@ -1,7 +1,7 @@
 # diff_xppconfig.ps1 - identify the XPP config JSON that VS created/updated during a switch.
 #
 # Name-agnostic: instead of matching by filename, it diffs the XPPConfig folder against the
-# Phase A baseline snapshot and returns the file that is new or has a newer mtime — that is the
+# Phase A baseline snapshot and returns the file that is new or has a newer mtime - that is the
 # one VS just touched, regardless of what VS named it (org ID, display name, etc.).
 #
 # Usage: diff_xppconfig.ps1 -BaselineFile <path> [-LastKnownVersion <ver>]
@@ -10,7 +10,7 @@
 #
 # Selection order:
 #   1. File that is new OR has a newer LastWriteTime than the baseline (newest wins).
-#   2. Fallback (assets cached / VS reused config — nothing changed): newest file whose
+#   2. Fallback (assets cached / VS reused config - nothing changed): newest file whose
 #      name contains -LastKnownVersion.
 #   3. Fallback: newest *.json in the folder.
 #
@@ -58,7 +58,7 @@ if (@($changed).Count -gt 0) {
     $picked = $changed | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     Write-Host "  Detected changed config: $($picked.Name)"
 } elseif ($LastKnownVersion) {
-    # 2) Nothing changed (cached) — fall back to a file matching the known version.
+    # 2) Nothing changed (cached) - fall back to a file matching the known version.
     $vmatch = $all | Where-Object { $_.Name -like "*$LastKnownVersion*" } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($vmatch) {
@@ -67,7 +67,7 @@ if (@($changed).Count -gt 0) {
     }
 }
 if (-not $picked) {
-    # 3) Last resort — newest config in the folder.
+    # 3) Last resort - newest config in the folder.
     $picked = $all | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     Write-Host "  No change/version match; fell back to newest config: $($picked.Name)"
 }

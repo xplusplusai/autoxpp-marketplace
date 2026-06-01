@@ -5,7 +5,7 @@
 
 $xppDir = Get-XppConfigDir
 if (-not (Test-Path $xppDir)) {
-    # Folder doesn't exist yet — empty baseline is fine
+    # Folder doesn't exist yet - empty baseline is fine
     return
 }
 

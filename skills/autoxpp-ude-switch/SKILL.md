@@ -53,6 +53,8 @@ See `DESIGN.md` in this folder for the full design rationale.
 
 ## Prerequisites (one-time per machine, NOT automated)
 
+> **PowerShell:** scripts run on **PowerShell 7 (`pwsh`, preferred) or Windows PowerShell 5.1** — they are ASCII-only with no PS7-only syntax. The entry-point invokes `pwsh`; if `pwsh` is absent the host may fall back to `powershell` 5.1, which now also works.
+
 1. Visual Studio 2022 installed (Professional or Enterprise)
 2. Power Platform Tools for VS 2022 extension installed
 3. `Tools → Options → Power Platform Tools → Skip Discovery when connecting to Dataverse` checked

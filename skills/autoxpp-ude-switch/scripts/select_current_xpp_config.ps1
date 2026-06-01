@@ -11,7 +11,7 @@
 #   XPP_CONFIG_ALREADY_CURRENT name=<name>
 #   XPP_CONFIG_ERROR <reason>
 #
-# Self-contained — does not depend on uia_helpers.ps1.
+# Self-contained - does not depend on uia_helpers.ps1.
 # When integrated into the MCP skill, replace the inline helpers
 # with: . "$PSScriptRoot\uia_helpers.ps1"
 
