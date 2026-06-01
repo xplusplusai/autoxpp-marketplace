@@ -209,6 +209,28 @@ function Dismiss-UnexpectedDialog {
     return $count
 }
 
+function Test-VsStartWindow {
+    # Reliable check for the VS "Get Started" Start Window (which has NO usable menu
+    # bar). Do NOT rely on "a MenuBar element exists" - the VS shell exposes an (empty)
+    # MenuBar in the UIA tree even on the Start Window, which gives false positives.
+    # The Start Window is the Custom control class 'GetToCodeWorkflowView', and it
+    # carries a "Continue without code" button.
+    $vs = Get-VsProcess
+    if (-not $vs) { return $false }
+    $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+    if (-not $vsElem) { return $false }
+    $AE = [System.Windows.Automation.AutomationElement]
+    $TS = [System.Windows.Automation.TreeScope]
+    $CT = [System.Windows.Automation.ControlType]
+    $cust = New-Object System.Windows.Automation.PropertyCondition($AE::ClassNameProperty, 'GetToCodeWorkflowView')
+    if ($vsElem.FindFirst($TS::Descendants, $cust)) { return $true }
+    $btnCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+    foreach ($b in @($vsElem.FindAll($TS::Descendants, $btnCond))) {
+        if (("" + $b.Current.Name) -like '*Continue without code*') { return $true }
+    }
+    return $false
+}
+
 function Find-ButtonByName {
     param(
         [Parameter(Mandatory=$true)]$Parent,
