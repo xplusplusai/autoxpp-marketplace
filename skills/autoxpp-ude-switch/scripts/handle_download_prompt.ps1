@@ -72,5 +72,7 @@ if (-not $btn) {
 }
 
 $click = Invoke-Button -Button $btn -VsHwnd $vs.MainWindowHandle
-Write-Host "DOWNLOAD_PROMPT_HANDLED choice=$choice version=$version cached=$cached click=$click"
+# Write-Output (not Write-Host) so the parent's $dlOut captures this line and can
+# parse 'choice=Yes' to decide whether to wait for the metadata download.
+Write-Output "DOWNLOAD_PROMPT_HANDLED choice=$choice version=$version cached=$cached click=$click"
 exit 0

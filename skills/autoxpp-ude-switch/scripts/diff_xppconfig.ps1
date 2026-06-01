@@ -72,5 +72,7 @@ if (-not $picked) {
     Write-Host "  No change/version match; fell back to newest config: $($picked.Name)"
 }
 
-Write-Host "XPP_JSON: $($picked.FullName)"
+# Emit the result on the SUCCESS/output stream (Write-Output) so the parent's
+# $diffOut = & diff_xppconfig.ps1 captures it. Write-Host would bypass capture.
+Write-Output "XPP_JSON: $($picked.FullName)"
 exit 0
