@@ -1,5 +1,9 @@
-# handle_url_popup.ps1 - enter environment URL and click Ok on the small popup
-# that appears after clicking Login ("Enter environment instance url" window).
+# handle_url_popup.ps1 - enter the Dataverse environment URL and click Ok on the
+# "Enter environment instance url" popup that appears after clicking Login.
+#
+# IMPORTANT (P-5): this popup is a TOP-LEVEL window (a child of the desktop), NOT a
+# child of the VS window. Earlier versions searched under the VS element and reported
+# URL_POPUP_MISSING even though the popup was on screen. We now search from RootElement.
 #
 # Usage: handle_url_popup.ps1 -Url <dataverseUrl> [-TimeoutSeconds 30]
 #
@@ -15,36 +19,60 @@ param(
 
 . "$PSScriptRoot\uia_helpers.ps1"
 
-$vs = Get-VsProcess
-if (-not $vs) { Write-Host "URL_POPUP_ERROR VS not running"; exit 1 }
+$AE = [System.Windows.Automation.AutomationElement]
+$TS = [System.Windows.Automation.TreeScope]
+$CT = [System.Windows.Automation.ControlType]
 
-$vsElem = Get-VsAutomationElement -VsPid $vs.Id
+function Find-TopLevelWindow {
+    # Search the desktop's direct child windows for one whose Name matches.
+    param([string[]]$NameContains)
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
+    $wins = $root.FindAll($TS::Children, $cond)
+    foreach ($w in $wins) {
+        $nm = $w.Current.Name
+        if (-not $nm) { continue }
+        foreach ($needle in $NameContains) { if ($nm -like "*$needle*") { return $w } }
+    }
+    return $null
+}
 
-# The popup title text is "Enter environment instance url"
-$popup = Wait-ForChildWindow -Parent $vsElem -NameContains @('Enter environment instance url','environment instance') -TimeoutSeconds $TimeoutSeconds
+# Wait for the popup as a top-level window.
+$popup = $null
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+while ((Get-Date) -lt $deadline) {
+    $popup = Find-TopLevelWindow -NameContains @('Enter environment instance url','environment instance')
+    if ($popup) { break }
+    Start-Sleep -Milliseconds 500
+}
 if (-not $popup) {
-    Write-Host "URL_POPUP_MISSING (popup did not appear within ${TimeoutSeconds}s)"
+    Write-Output "URL_POPUP_MISSING (popup did not appear within ${TimeoutSeconds}s)"
     exit 1
 }
 
-# Find the Edit control (there should be exactly one on this popup)
+# Find the Edit control (there should be exactly one on this popup) and set the URL.
 $edit = Find-EditControl -Parent $popup -Index 0
 if (-not $edit) {
-    Write-Host "URL_POPUP_ERROR Edit control not found"
+    Write-Output "URL_POPUP_ERROR Edit control not found"
     exit 1
 }
-
 $setResult = Set-EditText -Edit $edit -Text $Url
 Start-Sleep -Milliseconds 300
 
-# Click OK (label is "Ok" per screenshot - verify case)
+# Click Ok. Match by Name ('Ok'/'OK'), falling back to AutomationId 'btn_Save'.
 $btn = Find-ButtonByName -Parent $popup -Name "Ok"
 if (-not $btn) { $btn = Find-ButtonByName -Parent $popup -Name "OK" }
 if (-not $btn) {
-    Write-Host "URL_POPUP_ERROR OK button not found"
+    $idCond = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, 'btn_Save')
+    $btn = $popup.FindFirst($TS::Descendants, $idCond)
+}
+if (-not $btn) {
+    Write-Output "URL_POPUP_ERROR Ok button not found"
     exit 1
 }
 
-$click = Invoke-Button -Button $btn -VsHwnd $vs.MainWindowHandle
-Write-Host "URL_POPUP_HANDLED url=$Url textset=$setResult click=$click"
+$vs = Get-VsProcess
+$vsHwnd = if ($vs) { $vs.MainWindowHandle } else { [IntPtr]::Zero }
+$click = Invoke-Button -Button $btn -VsHwnd $vsHwnd
+Write-Output "URL_POPUP_HANDLED url=$Url textset=$setResult click=$click"
 exit 0
