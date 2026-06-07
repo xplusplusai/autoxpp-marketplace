@@ -205,10 +205,19 @@ try {
     Minimize-Vs
     Start-Sleep -Seconds 2
 
-    # Download prompt (may or may not appear)
+    # Download prompt (may or may not appear) — non-fatal: VS may not show it at all,
+    # or it may time out. Either way Phase C should still run since connect succeeded.
     Write-Host "Waiting for Client assets download prompt (policy=$policy)..."
-    $dlOut = & "$PSScriptRoot\handle_download_prompt.ps1" -Policy $policy -TimeoutSeconds 90
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $dlOut = & "$PSScriptRoot\handle_download_prompt.ps1" -Policy $policy -TimeoutSeconds 90 2>&1
+    $dlExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
     $dlOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "dl-prompt" -Status "INFO" -Detail $_ }
+    if ($dlExitCode -ne 0) {
+        Write-Host "  Download prompt: exited $dlExitCode (non-fatal, proceeding to Phase C)"
+        Write-UdeLog -LogFile $logFile -Step "dl-prompt" -Status "WARN" -Detail "non-fatal exit $dlExitCode"
+    }
 
     $downloadTriggered = ($dlOut -join "`n") -match 'choice=Yes'
     if ($downloadTriggered) {
