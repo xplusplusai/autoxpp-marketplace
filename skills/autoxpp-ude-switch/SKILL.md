@@ -148,6 +148,33 @@ See `DESIGN.md` section 7 for the full matrix. Common failures:
 - Account picker (cross-tenant) → surface to user
 - Download stall (no output for 2 min) → warn, offer cancel
 
+## Failure Recovery Rules (for the AI orchestrator)
+
+When `switch_ude.ps1` exits non-zero, the AI MUST follow these rules — NOT improvise workarounds.
+
+### Rule F-1: NEVER go off-script
+
+Do NOT manually invoke UIA, DTE COM, keybd_event, registry writes, or any ad-hoc PowerShell to work around a script failure. The scripts are the only authorized way to interact with VS. If a script fails after its built-in retries, report the failure to the user.
+
+### Rule F-2: Phase C is gated on Phase B completion
+
+If `switch_ude.ps1` exits 1, do NOT manually run Phase C scripts (`diff_xppconfig.ps1`, `retarget_xpp_config.ps1`, `select_current_xpp_config.ps1`). Phase C assumes Phase B completed successfully. Running Phase C after a partial Phase B can leave VS in a corrupt state (frozen, metadata errors).
+
+### Rule F-3: On exit code 1, report and stop
+
+Report the failure to the user with the log file path. Do NOT retry the entire switch unless the user explicitly asks. The user may need to:
+- Kill a frozen VS manually
+- Complete MFA / account selection
+- Check Power Platform Tools extension installation
+
+### Rule F-4: On exit code 2, get approval and re-run
+
+Exit 2 means user input is needed (VS already open, MFA detected). Get the specific approval, then re-run with the appropriate flag (`-CloseExisting` for VS already open). Do NOT try alternative approaches.
+
+### Rule F-5: VS freeze after switch
+
+If VS becomes unresponsive (Responding=False) after a switch attempt, report it to the user. The user must kill VS manually or approve killing it. Do NOT attempt to drive a frozen VS with UIA — it will not respond and may corrupt further.
+
 ## Logging
 
 All steps append to `C:\Users\[user]\.autoxpp\logs\ude-switch-{timestamp}.log` via shared `log_step.ps1` pattern. Line format:

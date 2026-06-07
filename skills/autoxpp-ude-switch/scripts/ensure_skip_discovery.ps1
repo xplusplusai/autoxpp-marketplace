@@ -1,6 +1,7 @@
 # ensure_skip_discovery.ps1
 # Opens Tools > Options > Power Platform Tools > General and ensures
 # "Skip Discovery when connecting to Dataverse" is checked.
+# Uses pure UIA — NO SendKeys.
 #
 # Emits:
 #   SKIP_DISCOVERY_ALREADY_CHECKED
@@ -13,204 +14,247 @@ $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
-Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
 
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-using System.Threading;
-public class SkipDiscNative {
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-    [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-    [DllImport("user32.dll")] public static extern void mouse_event(uint f, int x, int y, uint d, UIntPtr e);
-    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-    public static void ForceForeground(IntPtr hWnd) {
-        ShowWindow(hWnd, 9);
-        Thread.Sleep(200);
-        keybd_event(0xA4, 0, 0, UIntPtr.Zero);
-        SetForegroundWindow(hWnd);
-        keybd_event(0xA4, 0, 2, UIntPtr.Zero);
-    }
-    public static void Minimize(IntPtr hWnd) { ShowWindow(hWnd, 2); }
-    public static void Click(int x, int y) {
-        SetCursorPos(x, y); Thread.Sleep(100);
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-    }
-}
-"@ -ErrorAction SilentlyContinue
-
-. "$PSScriptRoot\uia_helpers.ps1"   # Dismiss-UnexpectedDialog (close undocumented blocking dialogs)
+. "$PSScriptRoot\uia_helpers.ps1"
 
 # --- Get VS process ---
-$vs = Get-Process devenv -ErrorAction SilentlyContinue |
-    Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } |
-    Select-Object -First 1
-
+$vs = Get-VsProcess
 if (-not $vs) {
     Write-Host "SKIP_DISCOVERY_FAIL VS not running"
     exit 1
 }
 
-$root = [System.Windows.Automation.AutomationElement]::RootElement
-$pidCond = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $vs.Id)
-$vsElem = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $pidCond)
-
+$vsElem = Get-VsAutomationElement -VsPid $vs.Id
 if (-not $vsElem) {
     Write-Host "SKIP_DISCOVERY_FAIL cannot get VS automation element"
     exit 1
 }
 
-# --- Close any existing Options dialog first ---
-$winCond = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [System.Windows.Automation.ControlType]::Window)
-$windows = $vsElem.FindAll([System.Windows.Automation.TreeScope]::Descendants, $winCond)
+$AE  = [System.Windows.Automation.AutomationElement]
+$TS  = [System.Windows.Automation.TreeScope]
+$CT  = [System.Windows.Automation.ControlType]
+
+$winCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
+$cbCond  = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::CheckBox)
+$menuItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::MenuItem)
+$treeItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::TreeItem)
+
+# --- Close any stale Options dialog via UIA (no SendKeys) ---
+$windows = $vsElem.FindAll($TS::Descendants, $winCond)
 foreach ($w in $windows) {
     if ($w.Current.Name -eq 'Options') {
         Write-Host "Closing stale Options dialog..."
-        [SkipDiscNative]::ForceForeground($vs.MainWindowHandle)
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
+        $cancelBtn = Find-ButtonByName -Parent $w -Name 'Cancel'
+        if ($cancelBtn) {
+            try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+        } else {
+            $okBtn = Find-ButtonByName -Parent $w -Name 'OK'
+            if ($okBtn) {
+                try { $okBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+            }
+        }
         Start-Sleep -Milliseconds 1000
         break
     }
 }
 
-# --- Pre-flight: do NOT SendKeys unless VS is at the main IDE ---
-# A fresh VS shows the Start Window (no usable menu bar); Alt+T,o would land in the
-# "Open recent" search box. Close any UNDOCUMENTED modal dialog (generic + safe),
-# then require that we are NOT at the Start Window (checked via the GetToCodeWorkflowView
-# control, not the unreliable "MenuBar exists"). Otherwise fail WITHOUT typing.
+# --- Pre-flight: dismiss unexpected dialogs, verify not at Start Window ---
 $null = Dismiss-UnexpectedDialog
 if (Test-VsStartWindow) {
-    Write-Host "SKIP_DISCOVERY_FAIL VS is at the Start Window (no menu); run dismiss_start_window.ps1 first - not sending keys."
+    Write-Host "SKIP_DISCOVERY_FAIL VS is at the Start Window (no menu); run dismiss_start_window.ps1 first."
     exit 1
 }
 
-# --- Show VS and open Options via Alt+T, O ---
-Write-Host "Showing VS to open Tools > Options..."
-[SkipDiscNative]::ForceForeground($vs.MainWindowHandle)
+# --- Open Options dialog via UIA: Tools menu -> Expand -> Options -> Invoke ---
+Show-Vs
 Start-Sleep -Milliseconds 500
 
-[System.Windows.Forms.SendKeys]::SendWait("%t")
-Start-Sleep -Milliseconds 1500
-[System.Windows.Forms.SendKeys]::SendWait("o")
-Start-Sleep -Milliseconds 2000
-
-# --- Wait for Options dialog ---
-$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $optionsDlg = $null
-while ((Get-Date) -lt $deadline) {
-    $windows = $vsElem.FindAll([System.Windows.Automation.TreeScope]::Descendants, $winCond)
-    foreach ($w in $windows) {
-        if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
+for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Write-Host "Opening Tools > Options (attempt $attempt)..."
+
+    # Find Tools menu item
+    $items = $vsElem.FindAll($TS::Descendants, $menuItemCond)
+    $toolsMenu = $null
+    foreach ($mi in $items) {
+        if ($mi.Current.Name -eq 'Tools') { $toolsMenu = $mi; break }
+    }
+    if (-not $toolsMenu) {
+        Write-Host "  Tools menu not found"
+        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Tools menu not found after 3 attempts"
+        exit 1
+    }
+
+    # Expand Tools menu
+    try {
+        $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+        Start-Sleep -Milliseconds 800
+    } catch {
+        Write-Host "  Cannot expand Tools menu: $_"
+        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Cannot expand Tools menu after 3 attempts"
+        exit 1
+    }
+
+    # Find "Options" or "Options..." menu item (VS may use either label)
+    $items2 = $vsElem.FindAll($TS::Descendants, $menuItemCond)
+    $optionsItem = $null
+    foreach ($mi in $items2) {
+        $n = $mi.Current.Name
+        if ($n -eq 'Options' -or $n -eq 'Options...') { $optionsItem = $mi; break }
+    }
+
+    if (-not $optionsItem) {
+        try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
+        Write-Host "  Options item not found in Tools menu"
+        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Options item not found after 3 attempts"
+        exit 1
+    }
+
+    # Invoke Options
+    try {
+        $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    } catch {
+        Write-Host "  Cannot invoke Options: $_"
+        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Cannot invoke Options after 3 attempts"
+        exit 1
+    }
+
+    # Wait for Options dialog to appear
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $windows = $vsElem.FindAll($TS::Descendants, $winCond)
+        foreach ($w in $windows) {
+            if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
+        }
+        if ($optionsDlg) { break }
+        Start-Sleep -Milliseconds 500
     }
     if ($optionsDlg) { break }
-    Start-Sleep -Milliseconds 500
+    Write-Host "  Options dialog did not appear"
+    if ($attempt -lt 3) { Start-Sleep -Seconds 3 }
 }
 
 if (-not $optionsDlg) {
-    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear"
-    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
+    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear after 3 attempts"
     exit 1
 }
-
 Write-Host "Options dialog found"
 
-# --- Search "Power Platform" to navigate tree, then click General ---
-Write-Host "Searching for 'Power Platform' via Ctrl+E..."
-[System.Windows.Forms.SendKeys]::SendWait("^e")
-Start-Sleep -Milliseconds 500
-[System.Windows.Forms.SendKeys]::SendWait("Power Platform")
-Start-Sleep -Milliseconds 2000
-
-# Press Enter to apply search and select the first match
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-Start-Sleep -Milliseconds 1500
-
-# Now find the "Skip Discovery" checkbox - it should be visible if
-# Power Platform Tools > General page is showing
-$cbCond = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [System.Windows.Automation.ControlType]::CheckBox)
-
+# --- Navigate to Power Platform Tools via search box (ValuePattern, no SendKeys) ---
 $skipCb = $null
-$deadline2 = (Get-Date).AddSeconds(10)
-while ((Get-Date) -lt $deadline2) {
-    $checkboxes = $optionsDlg.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cbCond)
-    foreach ($cb in $checkboxes) {
-        if ($cb.Current.Name -match 'Skip Discovery') {
-            $skipCb = $cb
-            break
-        }
+
+# Strategy 1: Find search/filter Edit control and set value via ValuePattern
+$editCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
+$edits = @($optionsDlg.FindAll($TS::Descendants, $editCond))
+$searchBox = $null
+foreach ($e in $edits) {
+    $aid = "" + $e.Current.AutomationId
+    $nm  = "" + $e.Current.Name
+    if ($aid -match 'Search|Filter' -or $nm -match 'Search|Filter') {
+        $searchBox = $e; break
     }
-    if ($skipCb) { break }
-    Start-Sleep -Milliseconds 500
 }
 
-if (-not $skipCb) {
-    # Checkboxes not found - maybe search landed on Power Platform Tools parent
-    # and we need to click General. Try pressing Down+Enter to select first child.
-    Write-Host "Checkbox not found yet - trying to navigate to General..."
-    # Clear search first, then use keyboard to navigate tree
-    [System.Windows.Forms.SendKeys]::SendWait("^e")
-    Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait("^a")
-    [System.Windows.Forms.SendKeys]::SendWait("{DELETE}")
-    Start-Sleep -Milliseconds 500
-    # Tab to tree, navigate
-    [System.Windows.Forms.SendKeys]::SendWait("{TAB}")
-    Start-Sleep -Milliseconds 300
+if ($searchBox) {
+    Write-Host "Using search box to filter to 'Power Platform'..."
+    try {
+        $vp = $searchBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+        $vp.SetValue("Power Platform")
+        Start-Sleep -Seconds 2
 
-    # Type 'p' repeatedly to jump to P entries until we find Power Platform Tools
-    for ($i = 0; $i -lt 10; $i++) {
-        [System.Windows.Forms.SendKeys]::SendWait("p")
-        Start-Sleep -Milliseconds 400
-        # Check if checkboxes appeared
-        $checkboxes = $optionsDlg.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cbCond)
-        foreach ($cb in $checkboxes) {
-            if ($cb.Current.Name -match 'Skip Discovery') {
-                $skipCb = $cb
-                break
-            }
-        }
-        if ($skipCb) { break }
-    }
-
-    if (-not $skipCb) {
-        # Try expanding current node and going to first child (General)
-        [System.Windows.Forms.SendKeys]::SendWait("{RIGHT}")
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("{DOWN}")
-        Start-Sleep -Milliseconds 1000
-
-        $deadline3 = (Get-Date).AddSeconds(5)
-        while ((Get-Date) -lt $deadline3) {
-            $checkboxes = $optionsDlg.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cbCond)
+        # After filtering, look for the Skip Discovery checkbox
+        $deadline2 = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $deadline2) {
+            $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
             foreach ($cb in $checkboxes) {
-                if ($cb.Current.Name -match 'Skip Discovery') {
-                    $skipCb = $cb
-                    break
-                }
+                if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
             }
             if ($skipCb) { break }
             Start-Sleep -Milliseconds 500
         }
+        if ($skipCb) { Write-Host "  Found checkbox via search" }
+    } catch {
+        Write-Host "  Search box approach failed: $_"
     }
 }
 
+# Strategy 2: Walk the TreeView directly
 if (-not $skipCb) {
-    Write-Host "Checkboxes found:"
-    $checkboxes = $optionsDlg.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cbCond)
-    foreach ($cb in $checkboxes) {
-        Write-Host "  '$($cb.Current.Name)'"
+    Write-Host "Walking TreeView to find Power Platform Tools..."
+    $treeItems = $optionsDlg.FindAll($TS::Descendants, $treeItemCond)
+
+    $ppItem = $null
+    foreach ($ti in $treeItems) {
+        if ($ti.Current.Name -match 'Power Platform') { $ppItem = $ti; break }
     }
-    [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
-    Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
+
+    if ($ppItem) {
+        Write-Host "  Found '$($ppItem.Current.Name)'"
+
+        # Select it (loads its page in the right pane)
+        try {
+            $ppItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            Start-Sleep -Milliseconds 500
+        } catch { Write-Host "  SelectionItemPattern not available: $_" }
+
+        # Expand to reveal General child
+        try {
+            $ppItem.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+            Start-Sleep -Milliseconds 500
+        } catch { Write-Host "  ExpandCollapsePattern not available (may be leaf node)" }
+
+        # Try to select the General child (some VS versions show it as a sub-node)
+        $children = $ppItem.FindAll($TS::Children, $treeItemCond)
+        foreach ($child in $children) {
+            if ($child.Current.Name -eq 'General') {
+                Write-Host "  Selecting 'General' child node"
+                try {
+                    $child.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+                    Start-Sleep -Milliseconds 1000
+                } catch {}
+                break
+            }
+        }
+
+        # Now look for checkbox in the right pane
+        $deadline3 = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $deadline3) {
+            $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
+            foreach ($cb in $checkboxes) {
+                if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
+            }
+            if ($skipCb) { break }
+            Start-Sleep -Milliseconds 500
+        }
+        if ($skipCb) { Write-Host "  Found checkbox via tree navigation" }
+    } else {
+        Write-Host "  'Power Platform' TreeItem not found in Options tree"
+    }
+}
+
+# Strategy 3: Brute-force search all checkboxes (Options dialog might already show it)
+if (-not $skipCb) {
+    Write-Host "Scanning all checkboxes in Options dialog..."
+    $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
+    foreach ($cb in $checkboxes) {
+        if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
+    }
+    if ($skipCb) { Write-Host "  Found checkbox via brute-force scan" }
+}
+
+if (-not $skipCb) {
+    Write-Host "Visible checkboxes:"
+    $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
+    foreach ($cb in $checkboxes) { Write-Host "  '$($cb.Current.Name)'" }
+    # Close dialog
+    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
+    if ($cancelBtn) {
+        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
     Write-Host "SKIP_DISCOVERY_FAIL 'Skip Discovery' checkbox not found"
     exit 1
 }
@@ -223,9 +267,10 @@ $currentState = $togglePattern.Current.ToggleState
 
 if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     Write-Host "SKIP_DISCOVERY_ALREADY_CHECKED"
-    [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
-    Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
+    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
+    if ($cancelBtn) {
+        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
     exit 0
 }
 
@@ -234,67 +279,81 @@ Write-Host "Checkbox is unchecked - toggling ON..."
 $togglePattern.Toggle()
 Start-Sleep -Milliseconds 300
 
-# Verify
 $newState = $togglePattern.Current.ToggleState
 if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
-    [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
-    Start-Sleep -Milliseconds 500
-    # no-minimize: leave VS as-is (never minimize VS - user can't restore it)
+    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
+    if ($cancelBtn) {
+        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
     Write-Host "SKIP_DISCOVERY_FAIL toggle did not stick (state=$newState)"
     exit 1
 }
 
 # --- Click OK to save ---
-# OK/Cancel in VS Options dialog are Pane controls, not Buttons
-$allChildren = $optionsDlg.FindAll([System.Windows.Automation.TreeScope]::Children,
-    [System.Windows.Automation.Condition]::TrueCondition)
-$okPane = $null
+# VS Options OK/Cancel may be Pane children (not Buttons). Try multiple strategies.
+$okClicked = $false
+
+# Strategy A: Find OK pane (direct child) with inner Button
+$allChildren = $optionsDlg.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
 foreach ($c in $allChildren) {
-    if ($c.Current.Name -eq 'OK') { $okPane = $c; break }
+    if ($c.Current.Name -eq 'OK') {
+        $btnCond2 = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+        $innerBtn = $c.FindFirst($TS::Descendants, $btnCond2)
+        if ($innerBtn) {
+            try {
+                $innerBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                $okClicked = $true
+                Write-Host "OK inner button invoked"
+            } catch {}
+        }
+        if (-not $okClicked) {
+            # Coordinate-click the pane center
+            $rect = $c.Current.BoundingRectangle
+            $cx = [int]($rect.X + $rect.Width / 2)
+            $cy = [int]($rect.Y + $rect.Height / 2)
+            Show-Vs
+            Start-Sleep -Milliseconds 300
+            [UdeSwitchUiaNative]::ClickAt($cx, $cy)
+            $okClicked = $true
+            Write-Host "OK pane clicked at ($cx, $cy)"
+        }
+        break
+    }
 }
 
-if ($okPane) {
-    $rect = $okPane.Current.BoundingRectangle
-    Write-Host "OK pane bounds: X=$($rect.X) Y=$($rect.Y) W=$($rect.Width) H=$($rect.Height)"
-
-    # Try clicking a child button inside the OK pane
-    $btnCond = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)
-    $innerBtn = $okPane.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $btnCond)
-    if ($innerBtn) {
-        Write-Host "Found inner Button inside OK pane"
-        try {
-            $innerBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-            Write-Host "Invoked inner OK button"
-        } catch {
-            Write-Host "Inner button Invoke failed: $_"
-        }
-    } else {
-        # Try SetFocus on OK pane then Enter
-        Write-Host "No inner button - focusing OK pane and pressing Enter"
-        try { $okPane.SetFocus() } catch {}
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+# Strategy B: Find OK Button by name (descendant search)
+if (-not $okClicked) {
+    $okBtn = Find-ButtonByName -Parent $optionsDlg -Name 'OK'
+    if ($okBtn) {
+        Invoke-Button -Button $okBtn -VsHwnd $vs.MainWindowHandle | ForEach-Object { Write-Host "OK: $_" }
+        $okClicked = $true
     }
-} else {
-    Write-Host "OK pane not found - pressing Enter"
-    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+}
+
+if (-not $okClicked) {
+    Write-Host "WARNING: Could not find OK button - attempting Cancel"
+    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
+    if ($cancelBtn) {
+        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
+    Write-Host "SKIP_DISCOVERY_FAIL Could not click OK to save"
+    exit 1
 }
 
 Start-Sleep -Milliseconds 1000
 
 # Verify dialog closed
 $stillOpen = $false
-$windows = $vsElem.FindAll([System.Windows.Automation.TreeScope]::Descendants, $winCond)
+$windows = $vsElem.FindAll($TS::Descendants, $winCond)
 foreach ($w in $windows) {
     if ($w.Current.Name -eq 'Options') { $stillOpen = $true; break }
 }
-
 if ($stillOpen) {
-    Write-Host "WARNING: Options dialog still open - pressing Escape"
-    [System.Windows.Forms.SendKeys]::SendWait("{ESCAPE}")
-    Start-Sleep -Milliseconds 500
+    Write-Host "WARNING: Options dialog still open - clicking Cancel"
+    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
+    if ($cancelBtn) {
+        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
 }
 
 # no-minimize: leave VS as-is (never minimize VS - user can't restore it)

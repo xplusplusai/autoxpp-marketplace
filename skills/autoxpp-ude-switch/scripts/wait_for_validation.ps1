@@ -55,9 +55,14 @@ while ((Get-Date) -lt $deadline) {
         }
     }
 
-    # Account picker (cross-tenant / first sign-in)
-    $picker = Find-AnyWindow -NameContains @('Pick an account','Sign in','choose an account')
-    if ($picker) { Write-Output "MFA_REQUIRED name=$($picker.Current.Name)"; exit 2 }
+    # Account picker (cross-tenant / first sign-in) — scoped to VS process only.
+    # Find-AnyWindow searches ALL desktop windows, which causes false positives
+    # when a Chrome tab has "Sign in" in its title. Use VS-scoped search instead.
+    $vsElem2 = Get-VsAutomationElement -VsPid $vs.Id
+    if ($vsElem2) {
+        $picker = Find-ChildWindow -Parent $vsElem2 -NameContains @('Pick an account','Sign in','choose an account')
+        if ($picker) { Write-Output "MFA_REQUIRED name=$($picker.Current.Name)"; exit 2 }
+    }
 
     Start-Sleep -Seconds 2
 }
