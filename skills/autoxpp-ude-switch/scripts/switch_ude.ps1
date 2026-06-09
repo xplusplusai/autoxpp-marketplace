@@ -141,6 +141,42 @@ try {
     $swOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "start-window" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "VS Start Window could not be dismissed (no menu bar available)" }
 
+    # Poll for VS menu bar readiness instead of blind-waiting a fixed delay.
+    # Extensions (especially Power Platform Tools) load asynchronously after the
+    # main IDE shell appears. We poll for the Tools menu item every 10s.
+    $menuTimeout = if ($reuseFresh) { 30 } else { 180 }
+    # Minimum initial delay: VS needs time after Start Window dismissal for extensions
+    # to begin loading. Without this, the poll can get a stale UIA tree that shows
+    # a "Tools" element from the Start Window context, not the real menu bar.
+    $initDelay = if ($reuseFresh) { 5 } else { 15 }
+    Write-Host "Waiting ${initDelay}s initial + up to ${menuTimeout}s for VS menu bar..."
+    Start-Sleep -Seconds $initDelay
+    $menuDeadline = (Get-Date).AddSeconds($menuTimeout)
+    $menuReady = $false
+    while ((Get-Date) -lt $menuDeadline) {
+        $vsElemCheck = Get-VsAutomationElement -VsPid $freshVs.Id
+        if ($vsElemCheck) {
+            $miCond = New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::MenuItem)
+            $menuItems = $vsElemCheck.FindAll([System.Windows.Automation.TreeScope]::Descendants, $miCond)
+            foreach ($mi in $menuItems) {
+                if ($mi.Current.Name -eq 'Tools') { $menuReady = $true; break }
+            }
+        }
+        if ($menuReady) { break }
+        $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
+        Write-Host "  Tools menu not ready yet (${remaining}s remaining)..."
+        Start-Sleep -Seconds 10
+    }
+    if ($menuReady) {
+        Write-Host "  Tools menu detected - VS is ready."
+        Write-UdeLog -LogFile $logFile -Step "menu-wait" -Status "OK" -Detail "menu ready"
+    } else {
+        Write-Host "  WARNING: Tools menu not detected after ${menuTimeout}s - proceeding anyway"
+        Write-UdeLog -LogFile $logFile -Step "menu-wait" -Status "WARN" -Detail "timeout ${menuTimeout}s"
+    }
+
     # Ensure "Skip Discovery" is ON - required for the "Enter environment instance url"
     # popup to appear during connect (Tools > Options > Power Platform Tools > General).
     Write-Host "Showing VS to verify 'Skip Discovery' option..."
@@ -180,17 +216,11 @@ try {
     Start-Sleep -Seconds 1
 
     # Wait for validation + loading
-    $validTimeout = if ($ude.timeouts) { [int]$ude.timeouts.dataverseConnectSeconds } else { 180 }
+    $validTimeout = if ($ude.timeouts) { [int]$ude.timeouts.dataverseConnectSeconds } else { 300 }
     Write-Host "Waiting for Dataverse validation + workflow loading (up to ${validTimeout}s)..."
     $vOut = & "$PSScriptRoot\wait_for_validation.ps1" -TimeoutSeconds $validTimeout
     $vOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "validate" -Status "INFO" -Detail $_ }
 
-    if ($LASTEXITCODE -eq 2) {
-        Write-Host ""
-        Write-Host "MFA / account picker detected. Please complete the sign-in in VS, then re-run this skill."
-        Write-UdeLog -LogFile $logFile -Step "mfa" -Status "WAIT" -Detail "user action required"
-        exit 2
-    }
     if ($LASTEXITCODE -ne 0) { throw "Validation timed out - Dataverse not responding" }
 
     # Select Solution
@@ -300,9 +330,57 @@ try {
 
     # Make OUR config the active/Current one via VS's own UI (Extensions > Dynamics 365 >
     # Configure Metadata...). No direct registry writes - VS owns that state.
-    $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 30
-    $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
-    if ($LASTEXITCODE -ne 0) { throw "Failed to set current XPP config via VS UI" }
+    # If VS freezes on the D365 submenu (observed after Dataverse reconnect), kill it,
+    # relaunch fresh, and retry once. Safe because we own the VS session and Phase B is done.
+    $selOk = $false
+    for ($selAttempt = 1; $selAttempt -le 2; $selAttempt++) {
+        Show-Vs
+        Start-Sleep -Seconds 1
+        $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 60
+        $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
+        if ($LASTEXITCODE -eq 0) { $selOk = $true; break }
+
+        if ($selAttempt -eq 1) {
+            # Check if VS froze
+            $selVsProc = Get-Process devenv -ErrorAction SilentlyContinue |
+                Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
+            $selFrozen = $selVsProc -and -not $selVsProc.Responding
+            Write-Host "  Select config failed (attempt 1). VS frozen=$selFrozen - killing and relaunching..."
+            Write-UdeLog -LogFile $logFile -Step "select-config" -Status "WARN" -Detail "attempt 1 failed, frozen=$selFrozen, restarting VS"
+
+            # Kill VS
+            Get-Process devenv -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+
+            # Relaunch
+            $selRelaunchOut = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
+            $selRelaunchOut | ForEach-Object { Write-Host "  $_" }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to relaunch VS for select-config retry" }
+
+            # Dismiss Start Window + wait for menu readiness
+            $null = & "$PSScriptRoot\dismiss_start_window.ps1" -TimeoutSeconds 60
+            Write-Host "  Waiting for VS menu bar after relaunch..."
+            Start-Sleep -Seconds 15
+            $selRetryDeadline = (Get-Date).AddSeconds(120)
+            $selMenuFound = $false
+            while ((Get-Date) -lt $selRetryDeadline) {
+                $selVsElem = Get-VsAutomationElement
+                if ($selVsElem) {
+                    $selMiCond = New-Object System.Windows.Automation.PropertyCondition(
+                        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                        [System.Windows.Automation.ControlType]::MenuItem)
+                    $selMenuItems = $selVsElem.FindAll([System.Windows.Automation.TreeScope]::Descendants, $selMiCond)
+                    foreach ($selMi in $selMenuItems) {
+                        if ($selMi.Current.Name -eq 'Tools') { $selMenuFound = $true; break }
+                    }
+                }
+                if ($selMenuFound) { break }
+                Start-Sleep -Seconds 10
+            }
+            Write-Host "  VS relaunched (menu ready=$selMenuFound) - retrying select config..."
+        }
+    }
+    if (-not $selOk) { throw "Failed to set current XPP config via VS UI (after restart retry)" }
 
     # Update ude-configs.json lastUsed
     Update-UdeLastUsed -Name $Name -Version $ver

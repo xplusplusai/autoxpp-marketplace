@@ -34,16 +34,11 @@ function Get-VsProcess {
 }
 
 function Get-VsAutomationElement {
-    param([int]$VsPid = 0)
-    if ($VsPid -eq 0) {
-        $p = Get-VsProcess
-        if (-not $p) { return $null }
-        $VsPid = $p.Id
-    }
-    $root = [System.Windows.Automation.AutomationElement]::RootElement
-    $pidCond = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $VsPid)
-    return $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $pidCond)
+    # Use FromHandle for a reliable UIA tree — PID-based RootElement.FindFirst
+    # returns stale trees during VS startup that miss menu items.
+    $p = Get-VsProcess
+    if (-not $p -or $p.MainWindowHandle -eq [IntPtr]::Zero) { return $null }
+    return [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
 }
 
 # --- Main logic ---
@@ -54,32 +49,35 @@ if (-not $vs) {
     Write-Host "XPP_CONFIG_ERROR VS not running"
     exit 1
 }
-$vsElem = Get-VsAutomationElement -VsPid $vs.Id
+$vsElem = Get-VsAutomationElement
 
 # Step 2: Open Extensions > Dynamics 365 > Configure Metadata...
 Write-Host "Opening Configure Metadata dialog..."
 
-$menuBar = $vsElem.FindFirst(
-    [System.Windows.Automation.TreeScope]::Descendants,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'MenuBar')))
-if (-not $menuBar) {
-    Write-Host "XPP_CONFIG_ERROR MenuBar not found"
-    exit 1
-}
-
-$extMenu = $menuBar.FindFirst(
-    [System.Windows.Automation.TreeScope]::Children,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Extensions')))
-if (-not $extMenu) {
-    Write-Host "XPP_CONFIG_ERROR Extensions menu not found"
-    exit 1
-}
-
 $menuOpened = $false
-for ($attempt = 1; $attempt -le 3; $attempt++) {
+for ($attempt = 1; $attempt -le 6; $attempt++) {
+    if ($attempt -gt 1) {
+        Write-Host "  Retry $attempt/6 in 10s..."
+        Start-Sleep -Seconds 10
+    }
+
     try {
+        # Re-acquire VS automation element each attempt (stale elements miss menu items)
+        $vsElem = Get-VsAutomationElement
+        if (-not $vsElem) { throw "Cannot get VS automation element" }
+
+        $menuBar = $vsElem.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::NameProperty, 'MenuBar')))
+        if (-not $menuBar) { throw "MenuBar not found" }
+
+        $extMenu = $menuBar.FindFirst(
+            [System.Windows.Automation.TreeScope]::Children,
+            (New-Object System.Windows.Automation.PropertyCondition(
+                [System.Windows.Automation.AutomationElement]::NameProperty, 'Extensions')))
+        if (-not $extMenu) { throw "Extensions menu not found" }
+
         $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 800
 
@@ -102,12 +100,12 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         $menuOpened = $true
         break
     } catch {
-        Write-Host "  Menu attempt $attempt failed: $_"
-        Start-Sleep -Seconds 3
+        Write-Host "  Attempt $attempt failed: $_"
+        try { if ($extMenu) { $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } } catch {}
     }
 }
 if (-not $menuOpened) {
-    Write-Host "XPP_CONFIG_ERROR Failed to open Configure Metadata dialog after 3 attempts"
+    Write-Host "XPP_CONFIG_ERROR Failed to open Configure Metadata dialog after 6 attempts"
     exit 1
 }
 

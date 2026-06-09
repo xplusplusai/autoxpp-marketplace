@@ -8,14 +8,13 @@
 # (the wizard keeps the same title across steps). The old text-only poll reported a
 # false VALIDATION_STUCK even though validation had finished.
 #
-# Usage: wait_for_validation.ps1 [-TimeoutSeconds 180]
+# Usage: wait_for_validation.ps1 [-TimeoutSeconds 300]
 #
 # Emits:
 #   VALIDATION_DONE      (Select Solution step available)
 #   VALIDATION_STUCK     (timed out)
-#   MFA_REQUIRED <name>  (account picker surfaced) -> exit 2
 
-param([int]$TimeoutSeconds = 180)
+param([int]$TimeoutSeconds = 300)
 
 . "$PSScriptRoot\uia_helpers.ps1"
 
@@ -53,15 +52,6 @@ while ((Get-Date) -lt $deadline) {
                 Write-Output "  $nm"; $lastSeen = $nm
             }
         }
-    }
-
-    # Account picker (cross-tenant / first sign-in) — scoped to VS process only.
-    # Find-AnyWindow searches ALL desktop windows, which causes false positives
-    # when a Chrome tab has "Sign in" in its title. Use VS-scoped search instead.
-    $vsElem2 = Get-VsAutomationElement -VsPid $vs.Id
-    if ($vsElem2) {
-        $picker = Find-ChildWindow -Parent $vsElem2 -NameContains @('Pick an account','Sign in','choose an account')
-        if ($picker) { Write-Output "MFA_REQUIRED name=$($picker.Current.Name)"; exit 2 }
     }
 
     Start-Sleep -Seconds 2

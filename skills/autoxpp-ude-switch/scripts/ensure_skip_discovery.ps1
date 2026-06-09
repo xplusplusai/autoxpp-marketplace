@@ -70,8 +70,18 @@ Show-Vs
 Start-Sleep -Milliseconds 500
 
 $optionsDlg = $null
-for ($attempt = 1; $attempt -le 3; $attempt++) {
-    Write-Host "Opening Tools > Options (attempt $attempt)..."
+for ($attempt = 1; $attempt -le 10; $attempt++) {
+    Write-Host "Opening Tools > Options (attempt $attempt/10)..."
+
+    # Re-acquire VS automation element each attempt — the UIA tree is stale if
+    # acquired during VS startup and won't reflect newly loaded extensions.
+    $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+    if (-not $vsElem) {
+        Write-Host "  Cannot get VS automation element"
+        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL cannot get VS automation element after 10 attempts"
+        exit 1
+    }
 
     # Find Tools menu item
     $items = $vsElem.FindAll($TS::Descendants, $menuItemCond)
@@ -81,8 +91,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     }
     if (-not $toolsMenu) {
         Write-Host "  Tools menu not found"
-        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Tools menu not found after 3 attempts"
+        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Tools menu not found after 10 attempts"
         exit 1
     }
 
@@ -92,8 +102,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         Start-Sleep -Milliseconds 800
     } catch {
         Write-Host "  Cannot expand Tools menu: $_"
-        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Cannot expand Tools menu after 3 attempts"
+        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Cannot expand Tools menu after 10 attempts"
         exit 1
     }
 
@@ -108,8 +118,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     if (-not $optionsItem) {
         try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
         Write-Host "  Options item not found in Tools menu"
-        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Options item not found after 3 attempts"
+        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Options item not found after 10 attempts"
         exit 1
     }
 
@@ -118,8 +128,8 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
         $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     } catch {
         Write-Host "  Cannot invoke Options: $_"
-        if ($attempt -lt 3) { Start-Sleep -Seconds 3; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Cannot invoke Options after 3 attempts"
+        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
+        Write-Host "SKIP_DISCOVERY_FAIL Cannot invoke Options after 10 attempts"
         exit 1
     }
 
@@ -135,11 +145,11 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     }
     if ($optionsDlg) { break }
     Write-Host "  Options dialog did not appear"
-    if ($attempt -lt 3) { Start-Sleep -Seconds 3 }
+    if ($attempt -lt 10) { Start-Sleep -Seconds 8 }
 }
 
 if (-not $optionsDlg) {
-    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear after 3 attempts"
+    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear after 10 attempts"
     exit 1
 }
 Write-Host "Options dialog found"
