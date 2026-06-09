@@ -21,7 +21,7 @@ description: >
 2. **Never skip Phase C retargeting.** VS auto-generates the new XPP config JSON with `ModelStoreFolder` defaulting to whichever path it last saw. Without retargeting, multiple UDEs share one custom metadata folder and builds pick up the wrong customer's code.
 3. **Default download policy = `ask` in v1.** Do not auto-click No on "Client assets download" unless `--no-download` flag is set. Safety first; the download-skip optimization ships in v2 after validation.
 
-4. **UIA Retry Before Escalate.** The most common cause of a single UIA failure is human mouse interference, not a broken VS state. When a UIA action fails (menu didn't open, button not found, click had no effect): wait 3 seconds, retry the same action (up to 3 attempts total). Only on 3rd consecutive failure: take a screenshot, diagnose, consider recovery. NEVER restart VS, kill processes, or reconnect on first UIA failure.
+4. **UIA Retry Before Escalate.** The most common cause of a single UIA failure is human mouse interference, not a broken VS state. When a UIA action fails (menu didn't open, button not found, click had no effect): wait 8 seconds, retry the same action (up to 6 attempts total). Only on 6th consecutive failure: take a screenshot, diagnose, consider recovery. NEVER restart VS, kill processes, or reconnect on first UIA failure.
 
 5. **"Skip Discovery" must be ON — the whole flow depends on it.** `Tools → Options → Power Platform Tools → General → ☑ Skip Discovery when connecting to Dataverse`. With it ON, VS shows the **"Enter environment instance url"** popup that `handle_url_popup.ps1` fills. With it OFF, that popup never appears and the switch cannot target a specific environment. Verify it is checked before connecting (the `ensure_skip_discovery.ps1` pre-flight enforces this).
 
@@ -34,10 +34,8 @@ description: >
 Switches Visual Studio 2022 UDE from one online D365 F&O environment to another, using a JSON config file to track known UDEs. Main flow is three phases:
 
 - **Phase A (pre-flight)**: Load config, snapshot XPPConfig folder state, decide download policy.
-- **Phase B (UIA)**: Drive VS through Tools → Connect to online Dataverse → Reconnect-No → Login → URL → Select Solution → Download-prompt.
-- **Phase C (post-switch)**: Retarget `ModelStoreFolder` in new XPP config JSON, update `lastUsed`/`lastKnownVersion`.
-
-See `DESIGN.md` in this folder for the full design rationale.
+- **Phase B (UIA)**: Handle existing VS → Launch → Dismiss Start Window → Ensure Skip Discovery → Close solution → Tools → Connect to online Dataverse → Reconnect-No → Login → URL → Wait for validation → Select Solution → Download-prompt.
+- **Phase C (post-switch)**: Identify new XPP config, retarget `ModelStoreFolder`, set as Current via VS UI, update `lastUsed`/`lastKnownVersion`.
 
 ## Invocation
 
@@ -57,9 +55,9 @@ See `DESIGN.md` in this folder for the full design rationale.
 
 1. Visual Studio 2022 installed (Professional or Enterprise)
 2. Power Platform Tools for VS 2022 extension installed
-3. `Tools → Options → Power Platform Tools → Skip Discovery when connecting to Dataverse` checked
+3. `Tools → Options → Power Platform Tools → Skip Discovery when connecting to Dataverse` checked (auto-enforced by `ensure_skip_discovery.ps1` if unchecked)
 4. At least one UDE reachable and user has access
-5. Windows account signed into the tenant (WAM caches MFA tokens)
+5. Windows account signed into the tenant (WAM handles auth transparently)
 
 If prerequisites are missing, skill surfaces an error with install guidance.
 
@@ -76,7 +74,7 @@ Minimum required per UDE: `name`, `dataverseUrl`, `customMetadataFolder`. Everyt
 All scripts live in `scripts/` and follow the established autoxpp-* pattern:
 - PowerShell (`.ps1`) for UIA and filesystem work on Windows
 - UTF-8 output
-- Structured logging via `log_step.ps1` (shared pattern)
+- Structured logging via `Write-UdeLog` in `config_helpers.ps1`
 - Emit tagged status lines (`UDE_SWITCH_OK`, `UDE_SWITCH_FAIL`, etc.) for the main channel
 
 **Use existing scripts only.** The agent MUST invoke the scripts listed below by their file path — never generate new PowerShell scripts inline or write ad-hoc `.ps1` files to disk. Every UDE operation is already covered by the script inventory. If a script doesn't exist for the operation, that operation is out of scope for this skill.
@@ -86,6 +84,7 @@ All scripts live in `scripts/` and follow the established autoxpp-* pattern:
 ```powershell
 pwsh "scripts/switch_ude.ps1" -Name "<env-name>"
 pwsh "scripts/switch_ude.ps1" -Name "<env-name>" -CloseExisting   # caller-approved: close an already-open VS, then switch
+pwsh "scripts/switch_ude.ps1" -Name "<env-name>" -DownloadPolicy always|ask|skip|skip-if-cached
 pwsh "scripts/switch_ude.ps1" -Current
 pwsh "scripts/switch_ude.ps1" -List
 pwsh "scripts/switch_ude.ps1" -Add
@@ -98,11 +97,14 @@ pwsh "scripts/switch_ude.ps1" -Add
 | Script | Purpose |
 |---|---|
 | `switch_ude.ps1` | Main orchestrator (Phase A/B/C) |
+| `uia_helpers.ps1` | Shared UIA primitives (dot-sourced by all dialog handlers) |
 | `config_helpers.ps1` | Load/save shared `ude-configs.json` (stamps schemaVersion 3, BOM-less) + resolve a UDE entry (dot-sourced) |
 | `list_udes.ps1` | Print configured UDE list with last-used info |
 | `show_current_ude.ps1` | Detect active UDE from XPPConfig folder + `lastUsed` |
 | `add_ude.ps1` | Interactive add flow (prompts, writes JSON) |
 | `launch_vs.ps1` | Start VS 2022 if not running; wait for main window |
+| `dismiss_start_window.ps1` | Dismiss VS Start Window + undocumented modal dialogs so menu bar is usable |
+| `ensure_skip_discovery.ps1` | Verify Tools → Options → Power Platform Tools → "Skip Discovery" is checked |
 | `close_open_solution.ps1` | UIA: File → Close Solution (if any open) |
 | `open_connect_dataverse_menu.ps1` | UIA: Tools → Connect to online Dataverse |
 | `handle_reconnect_dialog.ps1` | UIA: click No on "Reconnect to Dataverse" |
@@ -111,41 +113,51 @@ pwsh "scripts/switch_ude.ps1" -Add
 | `wait_for_validation.ps1` | UIA: poll for Validating / Loading states |
 | `handle_select_solution.ps1` | UIA: pick `solutionName` + click Done |
 | `handle_download_prompt.ps1` | UIA: read version, decide Yes/No, click |
-| `wait_for_download_complete.ps1` | Monitor download; detect VS exit |
-| `relaunch_vs_if_exited.ps1` | Relaunch VS after assets install if it auto-closed |
+| `wait_for_vs_exit.ps1` | Poll VS process until it exits (after client assets download) or timeout |
 | `retarget_xpp_config.ps1` | Overwrite `ModelStoreFolder`/`DebugSourceFolder` in new XPP JSON |
+| `select_current_xpp_config.ps1` | UIA: Extensions → Dynamics 365 → Configure Metadata, set target config as Current |
 | `snapshot_xppconfig.ps1` | Baseline snapshot of `XPPConfig\` folder |
 | `diff_xppconfig.ps1` | Identify newly created JSON file after switch |
 
 ## Flow summary (happy path)
 
 ```
-1. Load ude-configs.json → resolve {name} entry
-2. Verify VS 2022 + Power Platform Tools extension present
-3. Snapshot XPPConfig baseline
-4. Ensure VS running, close any open solution
-5. Tools → Connect to online Dataverse
-6. Click No on Reconnect dialog (force reconnect)
-7. Click Login on Power Platform Tools Login dialog
-8. Type dataverseUrl + OK on popup
-9. Wait for "Loading Workflows / Plugin / Steps..."
-10. Select solutionName on "Select Solution" dialog, click Done
-11. On "Client assets download" prompt:
+Phase A — pre-flight (disk only)
+ 1. Load ude-configs.json → resolve {name} entry, decide download policy
+ 2. Ensure customMetadataFolder exists (create if missing)
+ 3. Snapshot XPPConfig baseline
+
+Phase B — VS interaction (UIA)
+ 4. Handle existing VS: reuse fresh PID sentinel, or exit 2 for approval / close with -CloseExisting
+ 5. Launch VS (launch_vs.ps1) — wait for MainWindowHandle
+ 6. Dismiss Start Window + undocumented modal dialogs (dismiss_start_window.ps1)
+ 7. Ensure "Skip Discovery" is ON (ensure_skip_discovery.ps1 — Tools > Options)
+ 8. Close any open solution (close_open_solution.ps1)
+ 9. Tools → Connect to online Dataverse (open_connect_dataverse_menu.ps1)
+10. Click No on Reconnect dialog (handle_reconnect_dialog.ps1)
+11. Click Login on Power Platform Tools Login dialog (handle_login_dialog.ps1)
+12. Type dataverseUrl + OK on URL popup (handle_url_popup.ps1)
+13. Wait for Dataverse validation + workflow loading (wait_for_validation.ps1)
+14. Select solutionName on "Select Solution" dialog, click Done (handle_select_solution.ps1)
+15. On "Client assets download" prompt (handle_download_prompt.ps1):
     - if version cached AND policy != "always" → click No
     - else → click Yes, monitor progress
-12. If VS auto-exits post-download → wait + relaunch
-13. Identify new {name}___{version}.json in XPPConfig → retarget ModelStoreFolder
-14. Update lastUsed + lastKnownVersion in ude-configs.json
-15. Report summary
+16. If download triggered → wait for VS exit (wait_for_vs_exit.ps1) → relaunch if exited
+
+Phase C — post-switch (disk + VS UI)
+17. Diff XPPConfig to identify new config JSON (diff_xppconfig.ps1)
+18. Create/reuse owned {name}___{version}.json, retarget ModelStoreFolder (retarget_xpp_config.ps1)
+19. Set owned config as Current via VS UI (select_current_xpp_config.ps1)
+20. Update lastUsed + lastKnownVersion in ude-configs.json
+21. Report UDE_SWITCH_OK
 ```
 
 ## Error handling
 
-See `DESIGN.md` section 7 for the full matrix. Common failures:
+Common failures:
 - Config name not found → list known names
 - VS not installed → fail with guidance
-- MFA prompt → surface to user, wait up to 5 min
-- Account picker (cross-tenant) → surface to user
+- Validation timeout → Dataverse slow or unreachable
 - Download stall (no output for 2 min) → warn, offer cancel
 
 ## Failure Recovery Rules (for the AI orchestrator)
@@ -164,12 +176,11 @@ If `switch_ude.ps1` exits 1, do NOT manually run Phase C scripts (`diff_xppconfi
 
 Report the failure to the user with the log file path. Do NOT retry the entire switch unless the user explicitly asks. The user may need to:
 - Kill a frozen VS manually
-- Complete MFA / account selection
 - Check Power Platform Tools extension installation
 
 ### Rule F-4: On exit code 2, get approval and re-run
 
-Exit 2 means user input is needed (VS already open, MFA detected). Get the specific approval, then re-run with the appropriate flag (`-CloseExisting` for VS already open). Do NOT try alternative approaches.
+Exit 2 means user input is needed (VS already open). Get the specific approval, then re-run with the appropriate flag (`-CloseExisting` for VS already open). Do NOT try alternative approaches.
 
 ### Rule F-5: VS freeze after switch
 
@@ -177,7 +188,7 @@ If VS becomes unresponsive (Responding=False) after a switch attempt, report it 
 
 ## Logging
 
-All steps append to `C:\Users\[user]\.autoxpp\logs\ude-switch-{timestamp}.log` via shared `log_step.ps1` pattern. Line format:
+All steps append to `C:\Users\[user]\.autoxpp\logs\ude-switch-{timestamp}.log` via `Write-UdeLog` in `config_helpers.ps1`. Line format:
 ```
 <ISO-timestamp>  [ude-switch]  <STATUS>  <step>  <detail>
 ```
@@ -192,7 +203,6 @@ After install, test by:
 
 ## See also
 
-- `DESIGN.md` — full design rationale and phase detail
 - `reference/config-schema.md` — ude-configs.json schema reference
 - `reference/dialogs.md` — UIA selector reference per dialog
 - `autoxpp-build` — shared UIA patterns and Show/Hide VS discipline

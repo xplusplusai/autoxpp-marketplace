@@ -1,7 +1,7 @@
 # open_connect_dataverse_menu.ps1 - drive VS menu: Tools -> Connect to online Dataverse
 #
 # Uses UIA ExpandCollapsePattern on the Tools menu, then searches for the
-# "Connect to online Dataverse" menu item. Retries up to 3 times with 5s wait
+# "Connect to online Dataverse" menu item. Retries up to 10 times with 8s wait
 # between attempts (VS extensions may still be loading on first try).
 #
 # Emits:
@@ -16,25 +16,24 @@ if (-not $vs) { Write-Host "MENU_ERROR VS not running"; exit 1 }
 Show-Vs
 Start-Sleep -Milliseconds 500
 
-$vsElem = Get-VsAutomationElement -VsPid $vs.Id
-if (-not $vsElem) { Write-Host "MENU_ERROR Cannot get automation element"; exit 1 }
-
 $menuItemCond = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
     [System.Windows.Automation.ControlType]::MenuItem)
 
 $lastErr = ""
 
-for ($attempt = 1; $attempt -le 3; $attempt++) {
+for ($attempt = 1; $attempt -le 10; $attempt++) {
     if ($attempt -gt 1) {
-        Write-Host "  Retry $attempt in 5s (extensions may still be loading)..."
-        Start-Sleep -Seconds 5
+        Write-Host "  Retry $attempt/10 in 15s (extensions may still be loading)..."
+        Start-Sleep -Seconds 15
         Show-Vs
         Start-Sleep -Milliseconds 500
-        # Re-acquire automation element (VS tree may have changed)
-        $vsElem = Get-VsAutomationElement -VsPid $vs.Id
-        if (-not $vsElem) { $lastErr = "Cannot get automation element on retry"; continue }
     }
+
+    # Re-acquire automation element every attempt — the UIA tree is stale if
+    # acquired during VS startup and won't reflect newly loaded extensions.
+    $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+    if (-not $vsElem) { $lastErr = "Cannot get automation element"; continue }
 
     # Find Tools menu (MenuItem) by name
     $items = $vsElem.FindAll([System.Windows.Automation.TreeScope]::Descendants, $menuItemCond)
@@ -90,5 +89,5 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
     }
 }
 
-Write-Host "MENU_ERROR $lastErr (after 3 attempts)"
+Write-Host "MENU_ERROR $lastErr (after 10 attempts)"
 exit 1
