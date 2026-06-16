@@ -144,12 +144,14 @@ try {
     # Poll for VS menu bar readiness instead of blind-waiting a fixed delay.
     # Extensions (especially Power Platform Tools) load asynchronously after the
     # main IDE shell appears. We poll for the Tools menu item every 10s.
-    $menuTimeout = if ($reuseFresh) { 30 } else { 180 }
+    # VS menu loading is highly variable (especially after config switches) — can
+    # take 5-10+ minutes. Use generous timeout; user decides when to cancel.
+    $menuTimeout = if ($reuseFresh) { 60 } else { 600 }
     # Minimum initial delay: VS needs time after Start Window dismissal for extensions
     # to begin loading. Without this, the poll can get a stale UIA tree that shows
     # a "Tools" element from the Start Window context, not the real menu bar.
     $initDelay = if ($reuseFresh) { 5 } else { 15 }
-    Write-Host "Waiting ${initDelay}s initial + up to ${menuTimeout}s for VS menu bar..."
+    Write-Host "Waiting ${initDelay}s initial + up to ${menuTimeout}s for VS menu bar (this can take several minutes after config switch)..."
     Start-Sleep -Seconds $initDelay
     $menuDeadline = (Get-Date).AddSeconds($menuTimeout)
     $menuReady = $false
@@ -166,14 +168,15 @@ try {
         }
         if ($menuReady) { break }
         $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
-        Write-Host "  Tools menu not ready yet (${remaining}s remaining)..."
+        $elapsed = [math]::Round($menuTimeout - $remaining)
+        Write-Host "  Tools menu not ready yet — extensions still loading (${elapsed}s elapsed, ${remaining}s remaining)..."
         Start-Sleep -Seconds 10
     }
     if ($menuReady) {
         Write-Host "  Tools menu detected - VS is ready."
         Write-UdeLog -LogFile $logFile -Step "menu-wait" -Status "OK" -Detail "menu ready"
     } else {
-        Write-Host "  WARNING: Tools menu not detected after ${menuTimeout}s - proceeding anyway"
+        Write-Host "  WARNING: Tools menu not detected after ${menuTimeout}s - proceeding anyway (downstream scripts will retry)"
         Write-UdeLog -LogFile $logFile -Step "menu-wait" -Status "WARN" -Detail "timeout ${menuTimeout}s"
     }
 
@@ -359,9 +362,9 @@ try {
 
             # Dismiss Start Window + wait for menu readiness
             $null = & "$PSScriptRoot\dismiss_start_window.ps1" -TimeoutSeconds 60
-            Write-Host "  Waiting for VS menu bar after relaunch..."
+            Write-Host "  Waiting for VS menu bar after relaunch (can take several minutes)..."
             Start-Sleep -Seconds 15
-            $selRetryDeadline = (Get-Date).AddSeconds(120)
+            $selRetryDeadline = (Get-Date).AddSeconds(600)
             $selMenuFound = $false
             while ((Get-Date) -lt $selRetryDeadline) {
                 $selVsElem = Get-VsAutomationElement
