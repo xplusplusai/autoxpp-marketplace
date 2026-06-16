@@ -17,7 +17,8 @@
 
 param(
     [Parameter(Mandatory=$true)][string]$ConfigName,
-    [int]$TimeoutSeconds = 30
+    [int]$TimeoutSeconds = 30,
+    [int]$MenuTimeoutSeconds = 600
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,10 +56,15 @@ $vsElem = Get-VsAutomationElement
 Write-Host "Opening Configure Metadata dialog..."
 
 $menuOpened = $false
-for ($attempt = 1; $attempt -le 6; $attempt++) {
+$menuDeadline = (Get-Date).AddSeconds($MenuTimeoutSeconds)
+$attempt = 0
+while ((Get-Date) -lt $menuDeadline) {
+    $attempt++
+    $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
+    $elapsed = [math]::Round($MenuTimeoutSeconds - $remaining)
     if ($attempt -gt 1) {
-        Write-Host "  Retry $attempt/6 in 10s..."
-        Start-Sleep -Seconds 10
+        Write-Host "  Retry $attempt in 15s — D365 menu may still be loading (${elapsed}s elapsed, ${remaining}s remaining)..."
+        Start-Sleep -Seconds 15
     }
 
     try {
@@ -76,7 +82,7 @@ for ($attempt = 1; $attempt -le 6; $attempt++) {
             [System.Windows.Automation.TreeScope]::Children,
             (New-Object System.Windows.Automation.PropertyCondition(
                 [System.Windows.Automation.AutomationElement]::NameProperty, 'Extensions')))
-        if (-not $extMenu) { throw "Extensions menu not found" }
+        if (-not $extMenu) { throw "Extensions menu not found — D365 extension may still be loading" }
 
         $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 800
@@ -85,7 +91,7 @@ for ($attempt = 1; $attempt -le 6; $attempt++) {
             [System.Windows.Automation.TreeScope]::Descendants,
             (New-Object System.Windows.Automation.PropertyCondition(
                 [System.Windows.Automation.AutomationElement]::NameProperty, 'Dynamics 365')))
-        if (-not $d365) { throw "Dynamics 365 submenu not found" }
+        if (-not $d365) { throw "Dynamics 365 submenu not found — extension may still be loading" }
 
         $d365.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 800
@@ -100,12 +106,12 @@ for ($attempt = 1; $attempt -le 6; $attempt++) {
         $menuOpened = $true
         break
     } catch {
-        Write-Host "  Attempt $attempt failed: $_"
+        Write-Host "  Attempt $attempt`: $_"
         try { if ($extMenu) { $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } } catch {}
     }
 }
 if (-not $menuOpened) {
-    Write-Host "XPP_CONFIG_ERROR Failed to open Configure Metadata dialog after 6 attempts"
+    Write-Host "XPP_CONFIG_ERROR Failed to open Configure Metadata dialog after $attempt attempts over ${MenuTimeoutSeconds}s"
     exit 1
 }
 

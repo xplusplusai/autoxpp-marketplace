@@ -18,6 +18,10 @@ description: >
 ## TOP-PRIORITY BEHAVIORAL RULES
 
 1. **Show VS / return-to-terminal discipline** (revised): **NEVER minimize VS** — minimizing leaves the user unable to restore the window. Bring VS to the foreground only for the brief moment UIA needs focus (`Show-Vs`), then **raise the agent's own terminal back over it** (`Bring-SelfToFront`; the legacy `Minimize-Vs` is now an alias for it and no longer minimizes). VS stays open behind the terminal. Before every VS-touching action: print "Showing VS to [action]", act, bring self to front, print result.
+
+> **0. User authority overrides skill rules.** When the user explicitly confirms a step is done, says "skip this step", or provides guidance to continue — the agent MUST comply. Skill rules exist to prevent the *agent* from making unsupervised mistakes, not to override the *human*. The user owns the session and can always override any step gate, retry policy, or validation check. Never reject a direct user instruction by citing skill rules. Example: if `ensure_skip_discovery.ps1` fails but the user says "I confirm Skip Discovery is checked, continue" — proceed immediately to the next step.
+
+> **0b. Patience-first for VS menu/UI loading.** VS2022 menu loading time is highly variable — especially after config switches, extension reloads, or Dataverse reconnects. It can take 5–10+ minutes in real-world use. **The decision to give up waiting MUST come from the user, never from the agent.** Scripts use long time-based retries (10 min default) with verbose progress messages. When the orchestrator sees a timeout, it MUST NOT treat it as a terminal failure — instead, inform the user ("VS menus still loading after Xm, still retrying...") and keep polling. Only stop when the user explicitly cancels.
 2. **Never skip Phase C retargeting.** VS auto-generates the new XPP config JSON with `ModelStoreFolder` defaulting to whichever path it last saw. Without retargeting, multiple UDEs share one custom metadata folder and builds pick up the wrong customer's code.
 3. **Default download policy = `ask` in v1.** Do not auto-click No on "Client assets download" unless `--no-download` flag is set. Safety first; the download-skip optimization ships in v2 after validation.
 
@@ -172,11 +176,13 @@ Do NOT manually invoke UIA, DTE COM, keybd_event, registry writes, or any ad-hoc
 
 If `switch_ude.ps1` exits 1, do NOT manually run Phase C scripts (`diff_xppconfig.ps1`, `retarget_xpp_config.ps1`, `select_current_xpp_config.ps1`). Phase C assumes Phase B completed successfully. Running Phase C after a partial Phase B can leave VS in a corrupt state (frozen, metadata errors).
 
-### Rule F-3: On exit code 1, report and stop
+### Rule F-3: On exit code 1, report and stop — unless user overrides
 
 Report the failure to the user with the log file path. Do NOT retry the entire switch unless the user explicitly asks. The user may need to:
 - Kill a frozen VS manually
 - Check Power Platform Tools extension installation
+
+**User override:** If the user confirms the failed step is actually fine (e.g., "Skip Discovery is checked, I can see it") or says "continue" / "skip this step", proceed to the next step. The user's eyes on the screen outrank a script's exit code.
 
 ### Rule F-4: On exit code 2, get approval and re-run
 

@@ -1,12 +1,15 @@
 # open_connect_dataverse_menu.ps1 - drive VS menu: Tools -> Connect to online Dataverse
 #
 # Uses UIA ExpandCollapsePattern on the Tools menu, then searches for the
-# "Connect to online Dataverse" menu item. Retries up to 10 times with 8s wait
-# between attempts (VS extensions may still be loading on first try).
+# "Connect to online Dataverse" menu item. Uses time-based retry (default 10 min)
+# with verbose progress — VS extensions can take a very long time to load after
+# config switches. The decision to abort belongs to the caller/user, not this script.
 #
 # Emits:
 #   MENU_OPENED
 #   MENU_ERROR <reason>
+
+param([int]$TimeoutSeconds = 600)
 
 . "$PSScriptRoot\uia_helpers.ps1"
 
@@ -21,10 +24,15 @@ $menuItemCond = New-Object System.Windows.Automation.PropertyCondition(
     [System.Windows.Automation.ControlType]::MenuItem)
 
 $lastErr = ""
+$deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+$attempt = 0
 
-for ($attempt = 1; $attempt -le 10; $attempt++) {
+while ((Get-Date) -lt $deadline) {
+    $attempt++
     if ($attempt -gt 1) {
-        Write-Host "  Retry $attempt/10 in 15s (extensions may still be loading)..."
+        $remaining = [math]::Round(($deadline - (Get-Date)).TotalSeconds)
+        $elapsed = [math]::Round($TimeoutSeconds - $remaining)
+        Write-Host "  Retry $attempt in 15s — extensions may still be loading (${elapsed}s elapsed, ${remaining}s remaining)..."
         Start-Sleep -Seconds 15
         Show-Vs
         Start-Sleep -Milliseconds 500
@@ -89,5 +97,5 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
     }
 }
 
-Write-Host "MENU_ERROR $lastErr (after 10 attempts)"
+Write-Host "MENU_ERROR $lastErr (after $attempt attempts over ${TimeoutSeconds}s)"
 exit 1

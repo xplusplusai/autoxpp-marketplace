@@ -8,7 +8,10 @@
 #   SKIP_DISCOVERY_CHECKED (was unchecked, now checked)
 #   SKIP_DISCOVERY_FAIL <reason>
 
-param([int]$TimeoutSeconds = 30)
+param(
+    [int]$TimeoutSeconds = 30,
+    [int]$MenuTimeoutSeconds = 600
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -70,17 +73,20 @@ Show-Vs
 Start-Sleep -Milliseconds 500
 
 $optionsDlg = $null
-for ($attempt = 1; $attempt -le 10; $attempt++) {
-    Write-Host "Opening Tools > Options (attempt $attempt/10)..."
+$menuDeadline = (Get-Date).AddSeconds($MenuTimeoutSeconds)
+$attempt = 0
+while ((Get-Date) -lt $menuDeadline) {
+    $attempt++
+    $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
+    $elapsed = [math]::Round($MenuTimeoutSeconds - $remaining)
+    Write-Host "Opening Tools > Options (attempt $attempt, ${elapsed}s elapsed, ${remaining}s remaining)..."
 
     # Re-acquire VS automation element each attempt — the UIA tree is stale if
     # acquired during VS startup and won't reflect newly loaded extensions.
     $vsElem = Get-VsAutomationElement -VsPid $vs.Id
     if (-not $vsElem) {
-        Write-Host "  Cannot get VS automation element"
-        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL cannot get VS automation element after 10 attempts"
-        exit 1
+        Write-Host "  Cannot get VS automation element — extensions may still be loading, retrying..."
+        Start-Sleep -Seconds 15; continue
     }
 
     # Find Tools menu item
@@ -90,10 +96,8 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
         if ($mi.Current.Name -eq 'Tools') { $toolsMenu = $mi; break }
     }
     if (-not $toolsMenu) {
-        Write-Host "  Tools menu not found"
-        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Tools menu not found after 10 attempts"
-        exit 1
+        Write-Host "  Tools menu not found — VS menu bar may still be loading, retrying..."
+        Start-Sleep -Seconds 15; continue
     }
 
     # Expand Tools menu
@@ -101,10 +105,8 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
         $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 800
     } catch {
-        Write-Host "  Cannot expand Tools menu: $_"
-        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Cannot expand Tools menu after 10 attempts"
-        exit 1
+        Write-Host "  Cannot expand Tools menu: $_ — retrying..."
+        Start-Sleep -Seconds 15; continue
     }
 
     # Find "Options" or "Options..." menu item (VS may use either label)
@@ -117,25 +119,21 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
 
     if (-not $optionsItem) {
         try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
-        Write-Host "  Options item not found in Tools menu"
-        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Options item not found after 10 attempts"
-        exit 1
+        Write-Host "  Options item not found in Tools menu — retrying..."
+        Start-Sleep -Seconds 15; continue
     }
 
     # Invoke Options
     try {
         $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     } catch {
-        Write-Host "  Cannot invoke Options: $_"
-        if ($attempt -lt 10) { Start-Sleep -Seconds 15; continue }
-        Write-Host "SKIP_DISCOVERY_FAIL Cannot invoke Options after 10 attempts"
-        exit 1
+        Write-Host "  Cannot invoke Options: $_ — retrying..."
+        Start-Sleep -Seconds 15; continue
     }
 
     # Wait for Options dialog to appear
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $deadline) {
+    $dlgDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $dlgDeadline) {
         $windows = $vsElem.FindAll($TS::Descendants, $winCond)
         foreach ($w in $windows) {
             if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
@@ -144,12 +142,12 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
         Start-Sleep -Milliseconds 500
     }
     if ($optionsDlg) { break }
-    Write-Host "  Options dialog did not appear"
-    if ($attempt -lt 10) { Start-Sleep -Seconds 8 }
+    Write-Host "  Options dialog did not appear — retrying..."
+    Start-Sleep -Seconds 8
 }
 
 if (-not $optionsDlg) {
-    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear after 10 attempts"
+    Write-Host "SKIP_DISCOVERY_FAIL Options dialog did not appear after $attempt attempts over ${MenuTimeoutSeconds}s"
     exit 1
 }
 Write-Host "Options dialog found"
