@@ -44,5 +44,5 @@ The watchdog also serves as the lifecycle's **progress ticker** -- every 5 minut
 
 - **LLM agent, not bash script.** The prior bash approach could only regex-match log lines. An LLM agent reads `agent_conversation.txt` for blocker context, checks `progress.md` for dev-v2 status, and counts tester artifacts -- producing meaningful tick summaries instead of bare timer pings. Token cost is negligible at haiku tier.
 - **5-minute poll interval.** D365 F&O operations are long (builds 10-30 min, tests 30-60 min). 30-second polling was noise. 5 minutes matches the work rhythm.
-- **Writer, not pure observer.** Writing to `lifecycle.log` serves two purposes: S2 gets progress ticks, and STALL alerts reach the orchestrator via the existing Monitor (one Monitor instead of two).
+- **Writer, not pure observer.** Writing to `lifecycle.log` serves two purposes: external consumers get progress ticks, and STALL alerts reach the orchestrator via the existing Monitor (one Monitor instead of two).
 - **Detection only, no correction.** The watchdog writes events. All corrective intelligence lives in the orchestrator.
