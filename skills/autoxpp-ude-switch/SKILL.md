@@ -51,6 +51,7 @@ Switches Visual Studio 2022 UDE from one online D365 F&O environment to another,
 /autoxpp-ude-switch --add            → interactive add flow
 /autoxpp-ude-switch <name> --no-download     → skip metadata download (warn)
 /autoxpp-ude-switch <name> --close-existing  → if VS2022 is already open, close it first, then switch (fresh session)
+/autoxpp-ude-switch <name> --manual-confirm  → user completed switch manually; just update lastUsed/activeEnv
 ```
 
 ## Prerequisites (one-time per machine, NOT automated)
@@ -176,7 +177,7 @@ Do NOT manually invoke UIA, DTE COM, keybd_event, registry writes, or any ad-hoc
 
 If `switch_ude.ps1` exits 1, do NOT manually run Phase C scripts (`diff_xppconfig.ps1`, `retarget_xpp_config.ps1`, `select_current_xpp_config.ps1`). Phase C assumes Phase B completed successfully. Running Phase C after a partial Phase B can leave VS in a corrupt state (frozen, metadata errors).
 
-### Rule F-3: On exit code 1, report and stop — unless user overrides
+### Rule F-3: On exit code 1, report and follow up with manual-confirm
 
 Report the failure to the user with the log file path. Do NOT retry the entire switch unless the user explicitly asks. The user may need to:
 - Kill a frozen VS manually
@@ -184,13 +185,56 @@ Report the failure to the user with the log file path. Do NOT retry the entire s
 
 **User override:** If the user confirms the failed step is actually fine (e.g., "Skip Discovery is checked, I can see it") or says "continue" / "skip this step", proceed to the next step. The user's eyes on the screen outrank a script's exit code.
 
-### Rule F-4: On exit code 2, get approval and re-run
+**MANDATORY follow-up:** After reporting the failure, ALWAYS ask the user whether they completed (or will complete) the switch manually. Then follow Rule F-6 (Manual Switch Confirmation). Never end the conversation after an exit-1 without confirming config state.
+
+### Rule F-4: On exit code 2, get approval and re-run — or manual-confirm
 
 Exit 2 means user input is needed (VS already open). Get the specific approval, then re-run with the appropriate flag (`-CloseExisting` for VS already open). Do NOT try alternative approaches.
+
+**If the user declines the re-run** (e.g., "I'll do it myself", "skip it", "I already switched"), follow Rule F-6 (Manual Switch Confirmation) immediately.
 
 ### Rule F-5: VS freeze after switch
 
 If VS becomes unresponsive (Responding=False) after a switch attempt, report it to the user. The user must kill VS manually or approve killing it. Do NOT attempt to drive a frozen VS with UIA — it will not respond and may corrupt further.
+
+**After the freeze is resolved**, follow Rule F-6 — the switch may have partially completed, so the config still needs updating.
+
+### Rule F-6: Manual Switch Confirmation (MANDATORY after any non-zero exit)
+
+**This rule is the safety net that prevents `ude-configs.json` from going stale.** It fires after ANY non-zero exit from `switch_ude.ps1`, and also when the user reports a manual switch without invoking the skill at all.
+
+**The AI orchestrator MUST follow this sequence:**
+
+1. **Ask if the switch was completed manually.**
+   > "The automated switch didn't finish. Did you complete the UDE switch manually in VS?"
+   
+   If the script got partway through Phase B (e.g., connected to Dataverse, but failed on metadata config selection) and the user was offered a manual fallback — the answer is likely yes. Ask regardless.
+
+2. **If yes → present the UDE list for confirmation.** Read `ude-configs.json` and show the configured UDE names:
+   ```
+   Which UDE did you switch to?
+   1. UDE001
+   2. UDE002
+   3. UDE003
+   ```
+   If the target UDE is obvious from context (e.g., the user originally asked to switch to UDE003 and confirms they completed it), skip the picker and confirm: "You switched to UDE003 — correct?"
+
+3. **On confirmation → run manual-confirm** to update `lastUsed` and `activeEnv`:
+   ```powershell
+   pwsh "scripts/switch_ude.ps1" -Name "<confirmed-name>" -ManualConfirm
+   ```
+
+4. **Report the update.** Confirm to the user: "Updated activeEnv to `<name>` and stamped lastUsed."
+
+5. **If no → leave config as-is.** The user didn't switch. No update needed.
+
+**Trigger conditions** — the AI MUST enter this flow when ANY of these occur:
+- `switch_ude.ps1` exits non-zero (exit 1, 2, or 3) — **always** follow up, even if the failure seems unrelated to the switch itself
+- The user says they switched UDE manually (without the skill being invoked at all)
+- The user says "I did it", "it's done", "already switched", "I selected it manually" after a failed or partial switch attempt
+- The AI offered a manual fallback option during the switch and the user took it
+
+**Never silently end after a failed switch.** The whole point of `lastUsed`/`activeEnv` is to keep `ude-configs.json` in sync with reality. A manual switch that doesn't update the config causes downstream skills (build, dev-v2, lifecycle) to target the wrong environment. The AI's job is to ensure the config reflects reality — even when the scripts can't do it themselves.
 
 ## Logging
 

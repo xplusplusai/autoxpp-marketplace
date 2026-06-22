@@ -4,6 +4,7 @@
 #   switch_ude.ps1 -Name <udeName>                 # switch to named UDE
 #   switch_ude.ps1 -Name <udeName> -NoDownload     # warn + skip download if version not cached
 #   switch_ude.ps1 -Name <udeName> -DownloadPolicy always|ask|skip|skip-if-cached
+#   switch_ude.ps1 -Name <udeName> -ManualConfirm  # user switched manually; just update lastUsed/activeEnv
 #   switch_ude.ps1 -Current                        # print current active UDE
 #   switch_ude.ps1 -List                           # list configured UDEs
 #   switch_ude.ps1 -Add                            # interactive add flow
@@ -21,6 +22,7 @@ param(
     [switch]$Add,
     [switch]$NoDownload,
     [switch]$CloseExisting,
+    [switch]$ManualConfirm,
     [ValidateSet('','always','ask','skip','skip-if-cached')]
     [string]$DownloadPolicy = ''
 )
@@ -34,6 +36,29 @@ $ErrorActionPreference = 'Stop'
 if ($List)    { & "$PSScriptRoot\list_udes.ps1"; exit $LASTEXITCODE }
 if ($Current) { & "$PSScriptRoot\show_current_ude.ps1"; exit $LASTEXITCODE }
 if ($Add)     { & "$PSScriptRoot\add_ude.ps1"; exit $LASTEXITCODE }
+
+if ($ManualConfirm) {
+    # Manual confirmation mode: user completed the switch outside the skill.
+    # Just update lastUsed / activeEnv in ude-configs.json — no VS interaction.
+    if (-not $Name) {
+        Write-Host "ERROR: -ManualConfirm requires -Name <udeName>."
+        Write-Host "       Usage: switch_ude.ps1 -Name <udeName> -ManualConfirm"
+        exit 3
+    }
+    . "$PSScriptRoot\config_helpers.ps1"
+    $mcfg = Load-UdeConfigs
+    $mude = $mcfg.udeConfigs | Where-Object { $_.name -eq $Name }
+    if (-not $mude) {
+        $known = ($mcfg.udeConfigs | ForEach-Object { $_.name }) -join ", "
+        Write-Host "ERROR: UDE '$Name' not found. Known UDEs: $known"
+        exit 3
+    }
+    $ver = if ($mude.PSObject.Properties.Name -contains 'lastKnownVersion') { $mude.lastKnownVersion } else { "" }
+    Update-UdeLastUsed -Name $Name -Version $ver
+    Write-Host ""
+    Write-Host "UDE_MANUAL_CONFIRM_OK name=$Name activeEnv=$Name lastUsed=$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')"
+    exit 0
+}
 
 if (-not $Name) {
     Write-Host "ERROR: -Name is required (or use -List, -Current, -Add)."
