@@ -2,7 +2,7 @@
 #
 # Uses UIA ExpandCollapsePattern on the Tools menu, then searches for the
 # "Connect to online Dataverse" menu item. Uses time-based retry (default 10 min)
-# with verbose progress — VS extensions can take a very long time to load after
+# with verbose progress -- VS extensions can take a very long time to load after
 # config switches. The decision to abort belongs to the caller/user, not this script.
 #
 # Emits:
@@ -32,13 +32,13 @@ while ((Get-Date) -lt $deadline) {
     if ($attempt -gt 1) {
         $remaining = [math]::Round(($deadline - (Get-Date)).TotalSeconds)
         $elapsed = [math]::Round($TimeoutSeconds - $remaining)
-        Write-Host "  Retry $attempt in 15s — extensions may still be loading (${elapsed}s elapsed, ${remaining}s remaining)..."
+        Write-Host "  Retry $attempt in 15s -- extensions may still be loading (${elapsed}s elapsed, ${remaining}s remaining)..."
         Start-Sleep -Seconds 15
         Show-Vs
         Start-Sleep -Milliseconds 500
     }
 
-    # Re-acquire automation element every attempt — the UIA tree is stale if
+    # Re-acquire automation element every attempt -- the UIA tree is stale if
     # acquired during VS startup and won't reflect newly loaded extensions.
     $vsElem = Get-VsAutomationElement -VsPid $vs.Id
     if (-not $vsElem) { $lastErr = "Cannot get automation element"; continue }

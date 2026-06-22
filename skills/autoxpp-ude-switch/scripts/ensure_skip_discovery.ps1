@@ -1,7 +1,7 @@
 # ensure_skip_discovery.ps1
 # Opens Tools > Options > Power Platform Tools > General and ensures
 # "Skip Discovery when connecting to Dataverse" is checked.
-# Uses pure UIA — NO SendKeys.
+# Uses pure UIA -- NO SendKeys.
 #
 # Emits:
 #   SKIP_DISCOVERY_ALREADY_CHECKED
@@ -81,11 +81,11 @@ while ((Get-Date) -lt $menuDeadline) {
     $elapsed = [math]::Round($MenuTimeoutSeconds - $remaining)
     Write-Host "Opening Tools > Options (attempt $attempt, ${elapsed}s elapsed, ${remaining}s remaining)..."
 
-    # Re-acquire VS automation element each attempt — the UIA tree is stale if
+    # Re-acquire VS automation element each attempt -- the UIA tree is stale if
     # acquired during VS startup and won't reflect newly loaded extensions.
     $vsElem = Get-VsAutomationElement -VsPid $vs.Id
     if (-not $vsElem) {
-        Write-Host "  Cannot get VS automation element — extensions may still be loading, retrying..."
+        Write-Host "  Cannot get VS automation element -- extensions may still be loading, retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
@@ -96,7 +96,7 @@ while ((Get-Date) -lt $menuDeadline) {
         if ($mi.Current.Name -eq 'Tools') { $toolsMenu = $mi; break }
     }
     if (-not $toolsMenu) {
-        Write-Host "  Tools menu not found — VS menu bar may still be loading, retrying..."
+        Write-Host "  Tools menu not found -- VS menu bar may still be loading, retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
@@ -105,7 +105,7 @@ while ((Get-Date) -lt $menuDeadline) {
         $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 800
     } catch {
-        Write-Host "  Cannot expand Tools menu: $_ — retrying..."
+        Write-Host "  Cannot expand Tools menu: $_ -- retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
@@ -119,7 +119,7 @@ while ((Get-Date) -lt $menuDeadline) {
 
     if (-not $optionsItem) {
         try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
-        Write-Host "  Options item not found in Tools menu — retrying..."
+        Write-Host "  Options item not found in Tools menu -- retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
@@ -127,7 +127,7 @@ while ((Get-Date) -lt $menuDeadline) {
     try {
         $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     } catch {
-        Write-Host "  Cannot invoke Options: $_ — retrying..."
+        Write-Host "  Cannot invoke Options: $_ -- retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
@@ -142,7 +142,7 @@ while ((Get-Date) -lt $menuDeadline) {
         Start-Sleep -Milliseconds 500
     }
     if ($optionsDlg) { break }
-    Write-Host "  Options dialog did not appear — retrying..."
+    Write-Host "  Options dialog did not appear -- retrying..."
     Start-Sleep -Seconds 8
 }
 
