@@ -130,7 +130,7 @@ while ((Get-Date) -lt $deadline -and -not $jit) {
                 continue
             }
 
-            # Configure Power Platform Solution — two phases
+            # Configure Power Platform Solution -- two phases
             if ($name -like '*Power Platform Solution*') {
                 $doneBtn = Find-Button $w 'Done'
                 $loginBtn = Find-Button $w 'Login'
@@ -151,7 +151,7 @@ while ((Get-Date) -lt $deadline -and -not $jit) {
                     $out = & powershell.exe -ExecutionPolicy Bypass -File $handler 2>&1
                     Write-Host "STEP: delegated to handle_solution_dialog: $($out -join ' | ')"
                     Start-Sleep -Seconds 2
-                    # Check if the dialog still exists — if so, the mouse_event click
+                    # Check if the dialog still exists -- if so, the mouse_event click
                     # got consumed as a focus event; double-click the button coord.
                     $vsCheck = Get-VSWindow
                     if ($vsCheck) {
@@ -199,7 +199,7 @@ public class WinMouse {
             }
         }
     } catch {
-        # HRESULT 0x80131505 during auth handshake — benign, retry
+        # HRESULT 0x80131505 during auth handshake -- benign, retry
         Write-Host "WARN: UIA transient error: $($_.Exception.Message)"
         Start-Sleep -Seconds 2
     }
@@ -259,7 +259,7 @@ try {
 } catch {}
 
 # Emit result as a final JSON line
-# Note: we do NOT include the connection string here — caller reads clipboard in STA mode
+# Note: we do NOT include the connection string here -- caller reads clipboard in STA mode
 $expiryIso = ''
 try {
     $dt = [DateTime]::Parse($expiryVal)

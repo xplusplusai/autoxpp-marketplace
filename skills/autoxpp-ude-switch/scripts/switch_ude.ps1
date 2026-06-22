@@ -39,7 +39,7 @@ if ($Add)     { & "$PSScriptRoot\add_ude.ps1"; exit $LASTEXITCODE }
 
 if ($ManualConfirm) {
     # Manual confirmation mode: user completed the switch outside the skill.
-    # Just update lastUsed / activeEnv in ude-configs.json — no VS interaction.
+    # Just update lastUsed / activeEnv in ude-configs.json -- no VS interaction.
     if (-not $Name) {
         Write-Host "ERROR: -ManualConfirm requires -Name <udeName>."
         Write-Host "       Usage: switch_ude.ps1 -Name <udeName> -ManualConfirm"
@@ -169,7 +169,7 @@ try {
     # Poll for VS menu bar readiness instead of blind-waiting a fixed delay.
     # Extensions (especially Power Platform Tools) load asynchronously after the
     # main IDE shell appears. We poll for the Tools menu item every 10s.
-    # VS menu loading is highly variable (especially after config switches) — can
+    # VS menu loading is highly variable (especially after config switches) -- can
     # take 5-10+ minutes. Use generous timeout; user decides when to cancel.
     $menuTimeout = if ($reuseFresh) { 60 } else { 600 }
     # Minimum initial delay: VS needs time after Start Window dismissal for extensions
@@ -194,7 +194,7 @@ try {
         if ($menuReady) { break }
         $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
         $elapsed = [math]::Round($menuTimeout - $remaining)
-        Write-Host "  Tools menu not ready yet — extensions still loading (${elapsed}s elapsed, ${remaining}s remaining)..."
+        Write-Host "  Tools menu not ready yet -- extensions still loading (${elapsed}s elapsed, ${remaining}s remaining)..."
         Start-Sleep -Seconds 10
     }
     if ($menuReady) {
@@ -263,7 +263,7 @@ try {
     Minimize-Vs
     Start-Sleep -Seconds 2
 
-    # Download prompt (may or may not appear) — non-fatal: VS may not show it at all,
+    # Download prompt (may or may not appear) -- non-fatal: VS may not show it at all,
     # or it may time out. Either way Phase C should still run since connect succeeded.
     Write-Host "Waiting for Client assets download prompt (policy=$policy)..."
     $prevEAP = $ErrorActionPreference
