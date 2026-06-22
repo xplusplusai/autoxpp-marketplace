@@ -17,7 +17,7 @@
 
 ## What It Does
 
-AutoXPP is a multi-agent system of 20 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
+AutoXPP is a multi-agent system of 21 specialized AI skills that together form a complete D365 F&O development pipeline. Each agent handles one phase — analysis, coding, building, testing — and hands off to the next automatically. Feed it a requirement and walk away:
 
 1. **Analyst agent** decomposes the requirement into structured work items
 2. **QA agent** writes test cases in parallel
@@ -122,6 +122,7 @@ The watchdog monitors the entire lifecycle and alerts on stalled transitions. A 
 | **autoxpp-azure-devops** | Free | Azure DevOps REST API client. Reads and queries work items, comments, attachments, and boards directly from Claude Code. |
 | **autoxpp-load-lifecycle** | Pro | Bootloader that transitions from research to autonomous execution. Creates the workspace, arms the watchdog, and launches the first phases. |
 | **autoxpp-watchdog** | Pro | External safety net. Monitors lifecycle.log for stalled phase transitions and emits alerts when expected successor events are missing. |
+| **autoxpp-submit-learnings** | Pro | Extracts durable learnings from sessions and lifecycles, sanitizes, and submits to the xgen backend for centralized author review. Human-gated. |
 
 ### Role Loaders
 

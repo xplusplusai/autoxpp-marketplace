@@ -25,7 +25,7 @@ The skill applies a catalog of 13 red-flag criteria (RF-1 through RF-13), includ
 |:-----|:--------|:------|
 | `audit` | Periodic (~every 20 min) and on phase transitions | Standard red-flag scan |
 | `deep-check` | After fix-loop iteration 3; on non-green tester verdict | Full iteration history analysis, optional DB state verification |
-| `retrospective` | Mandatory at fix-loop iteration 3; at lifecycle end | Failure pattern analysis |
+| `retrospective` | Mandatory at fix-loop iteration 3; at lifecycle end | Failure pattern analysis, feeds into `autoxpp-submit-learnings` |
 
 ## Verdicts
 
