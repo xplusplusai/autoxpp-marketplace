@@ -2,6 +2,7 @@
 # Opens Tools > Options > Power Platform Tools > General and ensures
 # "Skip Discovery when connecting to Dataverse" is checked.
 # Uses pure UIA -- NO SendKeys.
+# Falls back to DTE COM via separate process when VS lacks foreground focus.
 #
 # Emits:
 #   SKIP_DISCOVERY_ALREADY_CHECKED
@@ -19,6 +20,33 @@ Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
 
 . "$PSScriptRoot\uia_helpers.ps1"
+
+# --- DTE helper script content (written to temp and run via Start-Process) ---
+$script:DteHelperScript = @'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+[ComImport, Guid("00000016-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IOleMessageFilter {
+    [PreserveSig] int HandleInComingCall(int a, IntPtr b, int c, IntPtr d);
+    [PreserveSig] int RetryRejectedCall(IntPtr a, int b, int c);
+    [PreserveSig] int MessagePending(IntPtr a, int b, int c);
+}
+public class MF : IOleMessageFilter {
+    [DllImport("ole32.dll")] static extern int CoRegisterMessageFilter(IOleMessageFilter f, out IOleMessageFilter old);
+    public static void Register() { IOleMessageFilter old; CoRegisterMessageFilter(new MF(), out old); }
+    public int HandleInComingCall(int a, IntPtr b, int c, IntPtr d) { return 0; }
+    public int RetryRejectedCall(IntPtr a, int b, int c) { return c == 2 ? 300 : -1; }
+    public int MessagePending(IntPtr a, int b, int c) { return 2; }
+}
+"@
+[MF]::Register()
+$dte = [System.Runtime.InteropServices.Marshal]::GetActiveObject("VisualStudio.DTE.17.0")
+$dte.ExecuteCommand("Tools.Options")
+'@
+
+# --- Track DTE helper process for cleanup ---
+$dteProc = $null
 
 # --- Get VS process ---
 $vs = Get-VsProcess
@@ -68,14 +96,18 @@ if (Test-VsStartWindow) {
     exit 1
 }
 
-# --- Open Options dialog via UIA: Tools menu -> Expand -> Options -> Invoke ---
+# --- Open Options dialog: retry loop with UIA-first + DTE COM fallback ---
+# VS extensions (including Power Platform Tools) can take minutes to load.
+# Neither UIA menu expansion nor DTE COM will work until loading completes,
+# so we retry the full UIA->DTE sequence with pauses between attempts.
 Show-Vs
 Start-Sleep -Milliseconds 500
 
 $optionsDlg = $null
 $menuDeadline = (Get-Date).AddSeconds($MenuTimeoutSeconds)
 $attempt = 0
-while ((Get-Date) -lt $menuDeadline) {
+
+while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
     $attempt++
     $remaining = [math]::Round(($menuDeadline - (Get-Date)).TotalSeconds)
     $elapsed = [math]::Round($MenuTimeoutSeconds - $remaining)
@@ -89,61 +121,89 @@ while ((Get-Date) -lt $menuDeadline) {
         Start-Sleep -Seconds 15; continue
     }
 
-    # Find Tools menu item
+    # --- Strategy A: UIA menu expansion (works when VS has foreground) ---
+    Write-Host "  Trying UIA menu expansion..."
     $items = $vsElem.FindAll($TS::Descendants, $menuItemCond)
     $toolsMenu = $null
     foreach ($mi in $items) {
         if ($mi.Current.Name -eq 'Tools') { $toolsMenu = $mi; break }
     }
+
     if (-not $toolsMenu) {
         Write-Host "  Tools menu not found -- VS menu bar may still be loading, retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
-    # Expand Tools menu
     try {
         $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        Start-Sleep -Milliseconds 800
-    } catch {
-        Write-Host "  Cannot expand Tools menu: $_ -- retrying..."
-        Start-Sleep -Seconds 15; continue
-    }
+        Start-Sleep -Milliseconds 1500
 
-    # Find "Options" or "Options..." menu item (VS may use either label)
-    $items2 = $vsElem.FindAll($TS::Descendants, $menuItemCond)
-    $optionsItem = $null
-    foreach ($mi in $items2) {
-        $n = $mi.Current.Name
-        if ($n -eq 'Options' -or $n -eq 'Options...') { $optionsItem = $mi; break }
-    }
-
-    if (-not $optionsItem) {
-        try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
-        Write-Host "  Options item not found in Tools menu -- retrying..."
-        Start-Sleep -Seconds 15; continue
-    }
-
-    # Invoke Options
-    try {
-        $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    } catch {
-        Write-Host "  Cannot invoke Options: $_ -- retrying..."
-        Start-Sleep -Seconds 15; continue
-    }
-
-    # Wait for Options dialog to appear
-    $dlgDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ((Get-Date) -lt $dlgDeadline) {
-        $windows = $vsElem.FindAll($TS::Descendants, $winCond)
-        foreach ($w in $windows) {
-            if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
+        # Search the Tools menu element's own descendants (NOT vsElem --
+        # WPF menu popups are linked to the menu item, not the main window).
+        $menuItems = $toolsMenu.FindAll($TS::Descendants, $menuItemCond)
+        $optionsItem = $null
+        foreach ($mi in $menuItems) {
+            $n = $mi.Current.Name
+            if ($n -eq 'Options' -or $n -eq 'Options...') { $optionsItem = $mi; break }
         }
-        if ($optionsDlg) { break }
-        Start-Sleep -Milliseconds 500
+
+        if ($optionsItem) {
+            Write-Host "  Found Options via UIA menu"
+            $optionsItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+            $dlgDeadline = (Get-Date).AddSeconds($TimeoutSeconds)
+            while ((Get-Date) -lt $dlgDeadline) {
+                $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+                $windows = $vsElem.FindAll($TS::Descendants, $winCond)
+                foreach ($w in $windows) {
+                    if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
+                }
+                if ($optionsDlg) { break }
+                Start-Sleep -Milliseconds 500
+            }
+        } else {
+            Write-Host "  Options not found in expanded menu (no foreground?)"
+            try { $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } catch {}
+        }
+    } catch {
+        Write-Host "  UIA menu expansion failed: $_"
     }
-    if ($optionsDlg) { break }
-    Write-Host "  Options dialog did not appear -- retrying..."
-    Start-Sleep -Seconds 8
+
+    # --- Strategy B: DTE COM via separate process (works without foreground) ---
+    if (-not $optionsDlg) {
+        Write-Host "  Falling back to DTE COM (separate process)..."
+
+        $helperPath = Join-Path $env:TEMP "ude_dte_open_options.ps1"
+        Set-Content -Path $helperPath -Value $script:DteHelperScript -Encoding UTF8
+
+        $dteProc = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList "-ExecutionPolicy Bypass -File `"$helperPath`"" `
+            -PassThru -WindowStyle Hidden
+
+        # Poll for Options dialog (30s per DTE attempt)
+        $dteDeadline = (Get-Date).AddSeconds(30)
+        while ((Get-Date) -lt $dteDeadline) {
+            $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+            if ($vsElem) {
+                $windows = $vsElem.FindAll($TS::Descendants, $winCond)
+                foreach ($w in $windows) {
+                    if ($w.Current.Name -eq 'Options') { $optionsDlg = $w; break }
+                }
+            }
+            if ($optionsDlg) { break }
+            Start-Sleep -Milliseconds 500
+        }
+
+        # Clean up helper process if this attempt failed
+        if (-not $optionsDlg -and $dteProc -and -not $dteProc.HasExited) {
+            Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue
+            $dteProc = $null
+        }
+    }
+
+    if (-not $optionsDlg) {
+        Write-Host "  Neither UIA nor DTE succeeded this attempt -- retrying..."
+        Start-Sleep -Seconds 8
+    }
 }
 
 if (-not $optionsDlg) {
@@ -263,6 +323,11 @@ if (-not $skipCb) {
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
+    # Clean up DTE helper
+    if ($dteProc -and -not $dteProc.HasExited) {
+        $dteProc.WaitForExit(5000)
+        if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
+    }
     Write-Host "SKIP_DISCOVERY_FAIL 'Skip Discovery' checkbox not found"
     exit 1
 }
@@ -279,6 +344,11 @@ if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
+    # Clean up DTE helper
+    if ($dteProc -and -not $dteProc.HasExited) {
+        $dteProc.WaitForExit(5000)
+        if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
+    }
     exit 0
 }
 
@@ -293,12 +363,15 @@ if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
+    if ($dteProc -and -not $dteProc.HasExited) {
+        $dteProc.WaitForExit(5000)
+        if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
+    }
     Write-Host "SKIP_DISCOVERY_FAIL toggle did not stick (state=$newState)"
     exit 1
 }
 
 # --- Click OK to save ---
-# VS Options OK/Cancel may be Pane children (not Buttons). Try multiple strategies.
 $okClicked = $false
 
 # Strategy A: Find OK pane (direct child) with inner Button
@@ -344,6 +417,10 @@ if (-not $okClicked) {
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
+    if ($dteProc -and -not $dteProc.HasExited) {
+        $dteProc.WaitForExit(5000)
+        if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
+    }
     Write-Host "SKIP_DISCOVERY_FAIL Could not click OK to save"
     exit 1
 }
@@ -361,6 +438,14 @@ if ($stillOpen) {
     $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    }
+}
+
+# Clean up DTE helper process
+if ($dteProc -and -not $dteProc.HasExited) {
+    $dteProc.WaitForExit(10000)
+    if (-not $dteProc.HasExited) {
+        Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue
     }
 }
 
