@@ -47,16 +47,17 @@ function Get-VsProcess {
 }
 
 function Get-VsAutomationElement {
+    # Use FromHandle for a reliable UIA tree -- PID-based RootElement.FindFirst
+    # returns stale/cached trees during VS startup that miss menu items.
+    # FromHandle always returns a fresh element bound to the actual window.
     param([int]$VsPid = 0)
-    if ($VsPid -eq 0) {
-        $p = Get-VsProcess
-        if (-not $p) { return $null }
-        $VsPid = $p.Id
+    $p = if ($VsPid -ne 0) {
+        Get-Process -Id $VsPid -ErrorAction SilentlyContinue
+    } else {
+        Get-VsProcess
     }
-    $root = [System.Windows.Automation.AutomationElement]::RootElement
-    $pidCond = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $VsPid)
-    return $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $pidCond)
+    if (-not $p -or $p.MainWindowHandle -eq [IntPtr]::Zero) { return $null }
+    return [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
 }
 
 function Find-ChildWindow {
@@ -163,7 +164,8 @@ function Dismiss-UnexpectedDialog {
         'Configure Microsoft Power Platform Solution','Configure Power Platform Solution',
         'Enter environment instance url','environment instance','Options',
         'Select Solution','Reconnect','Power Platform Tools','Connect to Dataverse',
-        'Client assets','Pick an account','Sign in','choose an account')
+        'Client assets','Pick an account','Sign in','choose an account',
+        'Updates for Dynamics 365','All files were updated successfully')
     $action = @('OK','Ok','Continue','Cancel','Yes','No')   # qualifies a window as a dialog
     $prefer = @('Cancel','No','OK','Ok','Continue','Yes')    # least-destructive dismiss order (never chrome Close)
 
@@ -321,4 +323,75 @@ function Show-Vs {
         [UdeSwitchUiaNative]::RestoreWindow($p.MainWindowHandle) | Out-Null
         [UdeSwitchUiaNative]::ForceForeground($p.MainWindowHandle)
     }
+}
+
+function Dismiss-D365UpdateDialog {
+    # Detect and dismiss the "Updates for Dynamics 365 Finance and Operations"
+    # dialog that sometimes appears when clicking Extensions > Dynamics 365.
+    # The dialog says "All files were updated successfully" with an OK button.
+    # Returns $true if a dialog was found and dismissed, $false otherwise.
+    $AE = [System.Windows.Automation.AutomationElement]
+    $TS = [System.Windows.Automation.TreeScope]
+    $CT = [System.Windows.Automation.ControlType]
+
+    $winCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
+    $btnCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+
+    $needles = @('Updates for Dynamics 365', 'All files were updated successfully')
+
+    # Search top-level windows
+    foreach ($w in @($AE::RootElement.FindAll($TS::Children, $winCond))) {
+        $nm = "" + $w.Current.Name
+        $matched = $false
+        foreach ($needle in $needles) {
+            if ($nm -like "*$needle*") { $matched = $true; break }
+        }
+        if (-not $matched) { continue }
+
+        # Found the update dialog -- click OK
+        foreach ($b in @($w.FindAll($TS::Descendants, $btnCond))) {
+            if (("" + $b.Current.Name).Trim() -eq 'OK') {
+                try {
+                    $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                } catch {
+                    $rect = $b.Current.BoundingRectangle
+                    [UdeSwitchUiaNative]::ClickAt([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+                }
+                Write-Host "  D365_UPDATE_DIALOG_DISMISSED (clicked OK)"
+                Start-Sleep -Milliseconds 800
+                return $true
+            }
+        }
+    }
+
+    # Also search inside VS process tree (dialog may be a child window)
+    $vs = Get-VsProcess
+    if ($vs) {
+        $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+        if ($vsElem) {
+            foreach ($w in @($vsElem.FindAll($TS::Descendants, $winCond))) {
+                $nm = "" + $w.Current.Name
+                $matched = $false
+                foreach ($needle in $needles) {
+                    if ($nm -like "*$needle*") { $matched = $true; break }
+                }
+                if (-not $matched) { continue }
+                foreach ($b in @($w.FindAll($TS::Descendants, $btnCond))) {
+                    if (("" + $b.Current.Name).Trim() -eq 'OK') {
+                        try {
+                            $b.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                        } catch {
+                            $rect = $b.Current.BoundingRectangle
+                            [UdeSwitchUiaNative]::ClickAt([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+                        }
+                        Write-Host "  D365_UPDATE_DIALOG_DISMISSED (clicked OK)"
+                        Start-Sleep -Milliseconds 800
+                        return $true
+                    }
+                }
+            }
+        }
+    }
+
+    return $false
 }

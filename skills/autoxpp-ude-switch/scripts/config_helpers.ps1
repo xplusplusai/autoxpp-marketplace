@@ -31,11 +31,11 @@ function Save-UdeConfigs {
     param([Parameter(Mandatory=$true)]$Config)
     $dir = Split-Path -Parent $script:UdeConfigPath
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    # Stamp the current shared schema version so a switch/add upgrades a stale (v1/v2) config in place.
+    # Stamp the current shared schema version so a switch/add upgrades a stale config in place.
     if ($Config.PSObject.Properties.Name -contains 'schemaVersion') {
-        $Config.schemaVersion = 3
+        $Config.schemaVersion = 4
     } else {
-        $Config | Add-Member -NotePropertyName 'schemaVersion' -NotePropertyValue 3
+        $Config | Add-Member -NotePropertyName 'schemaVersion' -NotePropertyValue 4
     }
     $json = $Config | ConvertTo-Json -Depth 20
     # BOM-less UTF-8: the Python consumers (sql.py / odata.py) reject a UTF-8 BOM.
@@ -141,4 +141,123 @@ function Write-UdeLog {
     if ($Detail) { $line += "  $Detail" }
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
     Write-Host $line
+}
+
+function Set-UdeField {
+    # Set a field on a PSObject, adding it if missing.
+    param(
+        [Parameter(Mandatory=$true)]$Obj,
+        [Parameter(Mandatory=$true)][string]$Name,
+        $Value
+    )
+    if ($Obj.PSObject.Properties.Name -contains $Name) {
+        $Obj.$Name = $Value
+    } else {
+        $Obj | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
+}
+
+function Update-UdeTrackedFields {
+    # Persist the v4 tracked fields for a UDE entry after a switch.
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [string]$XppConfigFile,
+        [string]$XppConfigSubfolder,
+        [string]$RuntimeSymLinkFolder,
+        [string]$XrefDbName,
+        [string]$VsOrgName
+    )
+    $cfg = Load-UdeConfigs
+    $ude = $cfg.udeConfigs | Where-Object { $_.name -eq $Name }
+    if (-not $ude) { return }
+
+    if ($XppConfigFile)       { Set-UdeField $ude 'xppConfigFile'       $XppConfigFile }
+    if ($XppConfigSubfolder)  { Set-UdeField $ude 'xppConfigSubfolder'  $XppConfigSubfolder }
+    if ($RuntimeSymLinkFolder){ Set-UdeField $ude 'runtimeSymLinkFolder' $RuntimeSymLinkFolder }
+    if ($XrefDbName)          { Set-UdeField $ude 'xrefDbName'          $XrefDbName }
+    if ($VsOrgName)           { Set-UdeField $ude 'vsOrgName'           $VsOrgName }
+
+    Save-UdeConfigs $cfg
+}
+
+function Get-UdeTrackedField {
+    # Read a tracked field from the resolved UDE hashtable, or empty string if missing.
+    param(
+        [Parameter(Mandatory=$true)][hashtable]$Ude,
+        [Parameter(Mandatory=$true)][string]$FieldName
+    )
+    if ($Ude.ContainsKey($FieldName)) { return [string]$Ude[$FieldName] }
+    return ""
+}
+
+function Get-RuntimeSymLinksDir {
+    return (Join-Path $script:DynamicsRoot "RuntimeSymLinks")
+}
+
+function Invoke-SchemaV4Migration {
+    # On load, if schemaVersion < 4, scan XPPConfig to populate new tracked fields
+    # for each UDE that does not already have them. Idempotent.
+    param([Parameter(Mandatory=$true)]$Config)
+
+    $sv = if ($Config.PSObject.Properties.Name -contains 'schemaVersion') { $Config.schemaVersion } else { 0 }
+    if ($sv -ge 4) { return $Config }
+
+    $xppDir = Get-XppConfigDir
+    $rslDir = Get-RuntimeSymLinksDir
+
+    foreach ($ude in $Config.udeConfigs) {
+        $name = $ude.name
+        $ver  = if ($ude.PSObject.Properties.Name -contains 'lastKnownVersion') { $ude.lastKnownVersion } else { "" }
+
+        # xppConfigFile: look for {name}___{ver}.json
+        if (-not ($ude.PSObject.Properties.Name -contains 'xppConfigFile' -and $ude.xppConfigFile)) {
+            if ($ver -and (Test-Path (Join-Path $xppDir "${name}___${ver}.json"))) {
+                Set-UdeField $ude 'xppConfigFile' "${name}___${ver}.json"
+            }
+        }
+
+        # vsOrgName + xppConfigSubfolder: scan XPPConfig subfolders for ___ver match
+        if (-not ($ude.PSObject.Properties.Name -contains 'xppConfigSubfolder' -and $ude.xppConfigSubfolder)) {
+            if ($ver -and (Test-Path $xppDir)) {
+                $subDirs = Get-ChildItem -Path $xppDir -Directory -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -like "*___$ver" }
+                if ($subDirs -and @($subDirs).Count -eq 1) {
+                    $sub = @($subDirs)[0]
+                    Set-UdeField $ude 'xppConfigSubfolder' $sub.Name
+                    $orgPart = ($sub.Name -split '___')[0]
+                    Set-UdeField $ude 'vsOrgName' $orgPart
+                }
+            }
+        }
+
+        # runtimeSymLinkFolder: look for folder starting with name or vsOrgName
+        if (-not ($ude.PSObject.Properties.Name -contains 'runtimeSymLinkFolder' -and $ude.runtimeSymLinkFolder)) {
+            if (Test-Path $rslDir) {
+                $orgName = if ($ude.PSObject.Properties.Name -contains 'vsOrgName' -and $ude.vsOrgName) { $ude.vsOrgName } else { "" }
+                $candidates = Get-ChildItem -Path $rslDir -Directory -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -eq $name -or $_.Name -match "^${name}\d+$" -or
+                                   ($orgName -and ($_.Name -eq $orgName -or $_.Name -match "^${orgName}\d+$")) } |
+                    Sort-Object LastWriteTime -Descending
+                if ($candidates -and @($candidates).Count -gt 0) {
+                    Set-UdeField $ude 'runtimeSymLinkFolder' @($candidates)[0].Name
+                }
+            }
+        }
+
+        # xrefDbName: read from the owned config JSON if it exists
+        if (-not ($ude.PSObject.Properties.Name -contains 'xrefDbName' -and $ude.xrefDbName)) {
+            $cfgFile = if ($ude.PSObject.Properties.Name -contains 'xppConfigFile' -and $ude.xppConfigFile) { $ude.xppConfigFile } else { "" }
+            if ($cfgFile -and (Test-Path (Join-Path $xppDir $cfgFile))) {
+                try {
+                    $j = Get-Content -Raw -Encoding UTF8 (Join-Path $xppDir $cfgFile) | ConvertFrom-Json
+                    if ($j.PSObject.Properties.Name -contains 'CrossReferencesDatabaseName' -and $j.CrossReferencesDatabaseName) {
+                        Set-UdeField $ude 'xrefDbName' $j.CrossReferencesDatabaseName
+                    }
+                } catch { }
+            }
+        }
+    }
+
+    Save-UdeConfigs $Config
+    return $Config
 }

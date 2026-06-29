@@ -2,15 +2,17 @@
 
 Path: `C:\Users\[user]\.autoxpp\ude-configs.json`
 
-This is the **shared, single source of truth** for environment config across all autoxpp skills (schemaVersion ≥ 3). ude-switch reads the UDE list, switches Visual Studio to the target Dataverse, and writes back `lastUsed` / `lastKnownVersion` / `activeEnv` after a successful switch.
+This is the **shared, single source of truth** for environment config across all autoxpp skills (schemaVersion ≥ 4). ude-switch reads the UDE list, switches Visual Studio to the target Dataverse, and writes back `lastUsed` / `lastKnownVersion` / `activeEnv` plus tracked artifact fields after a successful switch.
 
-> **Shared-file rule:** Other skills (build, sql-jit, tester, lifecycle) read and write this same file. ude-switch MUST preserve fields it does not own — load the whole object, mutate only `activeEnv` / per-entry `lastUsed` / `lastKnownVersion`, and save it back. Never drop unknown top-level keys or unknown per-entry keys (`moduleName`, `standardCodebasePath`, `oauth`, `login`, `sqlCache`, `defaults.maxFixLoopIterations`, etc.). `Save-UdeConfigs` stamps `schemaVersion = 3` on every write, so a switch/add operation upgrades a stale config in place.
+> **Shared-file rule:** Other skills (build, sql-jit, tester, lifecycle) read and write this same file. ude-switch MUST preserve fields it does not own — load the whole object, mutate only its owned fields, and save it back. Never drop unknown top-level keys or unknown per-entry keys (`moduleName`, `standardCodebasePath`, `oauth`, `login`, `sqlCache`, `defaults.maxFixLoopIterations`, etc.). `Save-UdeConfigs` stamps `schemaVersion = 4` on every write, so a switch/add operation upgrades a stale config in place.
+
+> **Schema v4 migration:** When `schemaVersion < 4`, `Invoke-SchemaV4Migration` auto-populates the new tracked fields (`xppConfigFile`, `xppConfigSubfolder`, `runtimeSymLinkFolder`, `xrefDbName`, `vsOrgName`) by scanning existing XPPConfig state. This runs once on first use after upgrade.
 
 ## Full example
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "activeEnv": "<env-1>",
   "defaults": {
     "maxFixLoopIterations": 3
@@ -30,6 +32,11 @@ This is the **shared, single source of truth** for environment config across all
       "downloadPolicy": "ask",
       "lastUsed": "2026-04-18T01:40:00Z",
       "lastKnownVersion": "10.0.2428.95",
+      "xppConfigFile": "<env-1>___10.0.2428.95.json",
+      "xppConfigSubfolder": "org1234abcd___10.0.2428.95",
+      "runtimeSymLinkFolder": "<env-1>1",
+      "xrefDbName": "XRef_org1234abcd100242895",
+      "vsOrgName": "org1234abcd",
       "oauth": { "tenantId": "", "clientId": "", "clientSecret": "", "grantType": "client_credentials" },
       "login": { "adminUser": "", "adminPassword": "", "testUser": "", "testPassword": "" },
       "sqlCache": { }
@@ -42,7 +49,7 @@ This is the **shared, single source of truth** for environment config across all
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `schemaVersion` | int | Shared schema version. **Current: 3.** ude-switch stamps `3` on every save (upgrades a stale v1/v2 file in place). |
+| `schemaVersion` | int | Shared schema version. **Current: 4.** ude-switch stamps `4` on every save (upgrades stale v1/v2/v3 files in place). |
 | `activeEnv` | string | Name of the currently-active UDE. Set automatically on a successful switch. All skills read this to pick the env entry. If unset, the first `udeConfigs` entry is used. |
 | `defaults` | object | Shared lifecycle defaults. The only key here is `maxFixLoopIterations` (owned by the lifecycle skills). ude-switch never reads or writes it — it just preserves whatever is present. |
 | `udeConfigs` | array | List of UDE environment definitions. |
@@ -68,6 +75,11 @@ This is the **shared, single source of truth** for environment config across all
 | `downloadPolicy` | no | ude-switch | `always` \| `ask` \| `skip` \| `skip-if-cached` for the client-assets download. Defaults to `ask`. |
 | `lastUsed` | auto | ude-switch | ISO timestamp, updated on switch. |
 | `lastKnownVersion` | auto | ude-switch | PackagesLocalDirectory version, updated on switch. |
+| `xppConfigFile` | auto | ude-switch | Owned config JSON filename in XPPConfig (e.g., `UDE001___10.0.2527.78.json`). Set on first switch. |
+| `xppConfigSubfolder` | auto | ude-switch | VS-generated subfolder in XPPConfig holding XRef `.mdf` files. Immutable name (cannot be renamed). |
+| `runtimeSymLinkFolder` | auto | ude-switch | Tracked RuntimeSymLinks folder for this UDE. One folder per UDE, reused across reconnects. |
+| `xrefDbName` | auto | ude-switch | LocalDB database name for XRef (e.g., `XRef_org1234abcd100252778_1`). |
+| `vsOrgName` | auto | ude-switch | Dataverse org identifier VS uses in auto-generated names (e.g., `org1234abcd`). |
 | `oauth` / `login` / `sqlCache` | no | other skills | Owned by build / sql-jit / tester. ude-switch preserves them verbatim. |
 
 ## Minimum valid entry

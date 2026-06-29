@@ -73,6 +73,7 @@ try {
     # --- Phase A: pre-flight (disk only) ---
     Write-UdeLog -LogFile $logFile -Step "phase-a" -Status "INFO" -Detail "loading config"
     $cfg  = Load-UdeConfigs
+    $cfg  = Invoke-SchemaV4Migration $cfg   # populate tracked fields if upgrading from v3
     $ude  = Resolve-Ude $cfg $Name
 
     # Resolve download policy (CLI > ude-configs.json default)
@@ -297,66 +298,193 @@ try {
         }
     }
 
-    # --- Phase C: post-switch disk edits ---
-    Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "resolving XPP config"
+    # --- Phase C: post-switch config lifecycle (one config per UDE) ---
+    Write-UdeLog -LogFile $logFile -Step "phase-c" -Status "INFO" -Detail "resolving XPP config (v4 lifecycle)"
 
-    # Identify the config VS just created/updated by diffing the XPPConfig folder
-    # against the Phase A baseline - name-agnostic (VS may name it by org ID or by
-    # display name; we don't care which). This is the source with the correct
-    # FrameworkDirectory / RuntimePackagesDirectory for this environment.
+    # 1. DETECT what VS created by diffing against the Phase A baseline.
     $lkv = if ($ude.ContainsKey('lastKnownVersion')) { $ude.lastKnownVersion } else { "" }
     $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -LastKnownVersion $lkv
     $diffOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "diff" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Could not identify the XPP config VS created" }
 
-    $srcXpp = ($diffOut | Where-Object { $_ -match '^XPP_JSON: ' }) -replace '^XPP_JSON: ', ''
+    # Parse diff output into variables
+    $srcXpp     = ($diffOut | Where-Object { $_ -match '^XPP_JSON: ' })     -replace '^XPP_JSON: ', ''
+    $vsOrgName  = ($diffOut | Where-Object { $_ -match '^VS_ORG_NAME: ' })  -replace '^VS_ORG_NAME: ', ''
+    $xrefDbName = ($diffOut | Where-Object { $_ -match '^XREF_DB_NAME: ' }) -replace '^XREF_DB_NAME: ', ''
+    $newRslFolders    = @($diffOut | Where-Object { $_ -match '^NEW_RSL_FOLDER: ' }    | ForEach-Object { $_ -replace '^NEW_RSL_FOLDER: ', '' })
+    $newXppSubfolders = @($diffOut | Where-Object { $_ -match '^NEW_XPP_SUBFOLDER: ' } | ForEach-Object { $_ -replace '^NEW_XPP_SUBFOLDER: ', '' })
     if (-not $srcXpp) { throw "diff_xppconfig did not emit XPP_JSON line" }
 
-    # Version comes from the file VS created.
+    # Version from the VS-generated filename
     $ver = ""
     $m = [regex]::Match([System.IO.Path]::GetFileNameWithoutExtension($srcXpp), '___([\d\.]+)$')
     if ($m.Success) { $ver = $m.Groups[1].Value }
 
-    # We own ONLY {UDE}___{ver}.json. Never rename or delete files VS made.
-    # If our file doesn't exist yet, create it by copying the VS-created one.
-    $xppDir  = Split-Path -Parent $srcXpp
+    $xppDir = Get-XppConfigDir
+    $rslDir = Get-RuntimeSymLinksDir
+
+    # Read previously tracked fields from ude-configs.json (v4 fields, may be empty on first run)
+    $prevXppConfigFile  = Get-UdeTrackedField $ude 'xppConfigFile'
+    $prevXppSubfolder   = Get-UdeTrackedField $ude 'xppConfigSubfolder'
+    $prevRslFolder      = Get-UdeTrackedField $ude 'runtimeSymLinkFolder'
+    $prevXrefDbName     = Get-UdeTrackedField $ude 'xrefDbName'
+    $prevVsOrgName      = Get-UdeTrackedField $ude 'vsOrgName'
+    $isFirstTime        = [string]::IsNullOrEmpty($prevXppConfigFile)
+
+    # 2. DECIDE: same version, version change, or first-time connect
+    $isVersionChange = (-not $isFirstTime) -and $ver -and $lkv -and ($ver -ne $lkv)
+
+    if ($isFirstTime) {
+        Write-Host "  First-time connect for $Name"
+        Write-UdeLog -LogFile $logFile -Step "lifecycle" -Status "INFO" -Detail "first-time connect"
+    } elseif ($isVersionChange) {
+        Write-Host "  Version change detected: $lkv -> $ver"
+        Write-UdeLog -LogFile $logFile -Step "lifecycle" -Status "INFO" -Detail "version-change old=$lkv new=$ver"
+    } else {
+        Write-Host "  Same version reconnect: $ver"
+        Write-UdeLog -LogFile $logFile -Step "lifecycle" -Status "INFO" -Detail "same-version $ver"
+    }
+
+    # 3. Determine our owned config filename
     $ourName = if ($ver) { "${Name}___${ver}.json" } else { "${Name}.json" }
     $xppLine = Join-Path $xppDir $ourName
 
+    # 4. Determine the RuntimeSymLinks folder to own
+    $ownedRslFolder = $prevRslFolder
+    if ([string]::IsNullOrEmpty($ownedRslFolder)) {
+        # First time: adopt the newest VS-created RSL folder, or the first new one
+        if ($newRslFolders.Count -gt 0) {
+            $ownedRslFolder = $newRslFolders[0]
+        } else {
+            # Scan for existing folder matching org name or UDE name
+            if (Test-Path $rslDir) {
+                $rslCandidates = Get-ChildItem -Path $rslDir -Directory -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -eq $Name -or $_.Name -match "^${Name}\d+$" -or
+                                   ($vsOrgName -and ($_.Name -eq $vsOrgName -or $_.Name -match "^${vsOrgName}\d+$")) } |
+                    Sort-Object LastWriteTime -Descending
+                if ($rslCandidates -and @($rslCandidates).Count -gt 0) {
+                    $ownedRslFolder = @($rslCandidates)[0].Name
+                }
+            }
+        }
+    }
+    Write-Host "  Owned RuntimeSymLinks folder: $ownedRslFolder"
+
+    # 5. Determine the XPPConfig subfolder (holds .mdf files) - adopt from VS
+    $ownedXppSubfolder = $prevXppSubfolder
+    if ($isVersionChange -or $isFirstTime) {
+        # On version change or first time, adopt the new subfolder VS created
+        if ($newXppSubfolders.Count -gt 0) {
+            $ownedXppSubfolder = $newXppSubfolders[0]
+        } elseif ($vsOrgName -and $ver) {
+            # Construct expected name
+            $expected = "${vsOrgName}___${ver}"
+            if (Test-Path (Join-Path $xppDir $expected)) {
+                $ownedXppSubfolder = $expected
+            }
+        }
+    }
+
+    # 6. Create/update our owned config JSON
+    $srcLeaf = Split-Path -Leaf $srcXpp
     if ($srcXpp -ieq $xppLine) {
-        Write-Host "  VS used our name already: $ourName"
+        Write-Host "  VS used our owned name already: $ourName"
         Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "vs-named $ourName"
-    } elseif (Test-Path $xppLine) {
+    } elseif (-not $isVersionChange -and (Test-Path $xppLine)) {
+        # Same version reconnect: VS may have overwritten its own file; re-apply retargeting to ours
         Write-Host "  Using existing owned config: $ourName"
         Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "exists $ourName"
     } else {
+        # First time or version change: copy VS-generated to our owned name
         Copy-Item -Path $srcXpp -Destination $xppLine -Force
-        Write-Host "  Created owned config: $ourName (copied from $(Split-Path -Leaf $srcXpp))"
-        # Cosmetic: point the Description at the friendly name for the dialog.
-        $srcLeaf = ([System.IO.Path]::GetFileNameWithoutExtension($srcXpp) -split '___')[0]
+        Write-Host "  Created owned config: $ourName (copied from $srcLeaf)"
+        # Cosmetic: replace org ID with friendly name in Description
+        $srcOrgPart = ([System.IO.Path]::GetFileNameWithoutExtension($srcXpp) -split '___')[0]
         try {
             $raw = [System.IO.File]::ReadAllText($xppLine, (New-Object System.Text.UTF8Encoding $false))
             $jr  = $raw | ConvertFrom-Json
             if (($jr.PSObject.Properties.Name -contains 'Description') -and $jr.Description) {
-                $jr.Description = $jr.Description -replace [regex]::Escape($srcLeaf), $Name
+                $jr.Description = $jr.Description -replace [regex]::Escape($srcOrgPart), $Name
                 $out = ($jr | ConvertTo-Json -Depth 20) -replace ':  ', ': '
                 [System.IO.File]::WriteAllText($xppLine, $out, (New-Object System.Text.UTF8Encoding $false))
             }
         } catch { }
-        Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "created $ourName from $(Split-Path -Leaf $srcXpp)"
+        Write-UdeLog -LogFile $logFile -Step "own-config" -Status "OK" -Detail "created $ourName from $srcLeaf"
     }
 
-    # Retarget ModelStoreFolder/DebugSourceFolder (+DefaultCompany) in OUR config to
-    # the customMetadataFolder from ude-configs.json.
+    # 7. Retarget ModelStoreFolder/DebugSourceFolder/RuntimePackagesDirectory/DefaultCompany
     $company = if ($ude.ContainsKey('defaultCompany')) { $ude.defaultCompany } else { "" }
+    $rslFullPath = ""
+    if ($ownedRslFolder) {
+        $rslFullPath = Join-Path $rslDir $ownedRslFolder
+    }
     $rtOut = & "$PSScriptRoot\retarget_xpp_config.ps1" `
         -XppJsonPath $xppLine `
         -MetadataFolder $ude.customMetadataFolder `
-        -DefaultCompany $company
+        -DefaultCompany $company `
+        -RuntimeSymLinkPath $rslFullPath
     $rtOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "retarget" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Retarget failed" }
 
-    # Make OUR config the active/Current one via VS's own UI (Extensions > Dynamics 365 >
+    # 8. Delete VS-generated config JSON if it differs from our owned one
+    if ($srcXpp -and -not ($srcXpp -ieq $xppLine) -and (Test-Path $srcXpp)) {
+        Remove-Item -Path $srcXpp -Force -ErrorAction SilentlyContinue
+        Write-Host "  Deleted VS-generated config: $srcLeaf (replaced by $ourName)"
+        Write-UdeLog -LogFile $logFile -Step "cleanup-vs-json" -Status "OK" -Detail "deleted $srcLeaf"
+    }
+
+    # 9. Delete VS-generated RuntimeSymLinks folders that aren't our owned one
+    foreach ($newRsl in $newRslFolders) {
+        if ($newRsl -ne $ownedRslFolder) {
+            $rslPath = Join-Path $rslDir $newRsl
+            if (Test-Path $rslPath) {
+                Remove-Item -Path $rslPath -Recurse -Force -ErrorAction SilentlyContinue
+                Write-Host "  Deleted duplicate RuntimeSymLinks folder: $newRsl"
+                Write-UdeLog -LogFile $logFile -Step "cleanup-rsl" -Status "OK" -Detail "deleted $newRsl"
+            }
+        }
+    }
+
+    # 10. On version change: clean up old version artifacts
+    if ($isVersionChange) {
+        Write-Host "  Cleaning up old version ($lkv) artifacts..."
+        Write-UdeLog -LogFile $logFile -Step "cleanup-old" -Status "INFO" -Detail "cleaning old version $lkv"
+
+        $oldConfigJson  = $prevXppConfigFile
+        $oldXppSub      = $prevXppSubfolder
+        $oldXrefDb      = $prevXrefDbName
+
+        $cleanOut = & "$PSScriptRoot\cleanup_old_version.ps1" `
+            -OldXrefDbName $oldXrefDb `
+            -OldXppSubfolder $oldXppSub `
+            -OldConfigJson $oldConfigJson
+        $cleanOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "cleanup-old" -Status "INFO" -Detail $_ }
+
+        # Update standardCodebasePath to new version
+        $newStdPath = Join-Path (Get-DynamicsRoot) "$ver\PackagesLocalDirectory"
+        if (Test-Path $newStdPath) {
+            Write-Host "  Updated standardCodebasePath to $newStdPath"
+            Write-UdeLog -LogFile $logFile -Step "std-path" -Status "OK" -Detail "standardCodebasePath=$newStdPath"
+            # This will be persisted via Update-UdeTrackedFields + Update-UdeLastUsed below
+            $cfgForStdPath = Load-UdeConfigs
+            $udeForStdPath = $cfgForStdPath.udeConfigs | Where-Object { $_.name -eq $Name }
+            if ($udeForStdPath) {
+                Set-UdeField $udeForStdPath 'standardCodebasePath' $newStdPath
+                Save-UdeConfigs $cfgForStdPath
+            }
+        }
+    }
+
+    # 11. Update tracked fields in ude-configs.json (v4)
+    Update-UdeTrackedFields -Name $Name `
+        -XppConfigFile $ourName `
+        -XppConfigSubfolder $ownedXppSubfolder `
+        -RuntimeSymLinkFolder $ownedRslFolder `
+        -XrefDbName $xrefDbName `
+        -VsOrgName $vsOrgName
+    Write-UdeLog -LogFile $logFile -Step "tracked-fields" -Status "OK" -Detail "xppConfigFile=$ourName rslFolder=$ownedRslFolder xrefDb=$xrefDbName vsOrg=$vsOrgName"
+
+    # 12. Make OUR config the active/Current one via VS's own UI (Extensions > Dynamics 365 >
     # Configure Metadata...). No direct registry writes - VS owns that state.
     # If VS freezes on the D365 submenu (observed after Dataverse reconnect), kill it,
     # relaunch fresh, and retry once. Safe because we own the VS session and Phase B is done.
@@ -409,6 +537,32 @@ try {
         }
     }
     if (-not $selOk) { throw "Failed to set current XPP config via VS UI (after restart retry)" }
+
+    # 12b. Strip UTF-8 BOM from all XPP config JSONs
+    # VS adds BOM (EF BB BF) when it rewrites configs to save IsCurrent.
+    # On next restart, VS fails to parse BOM'd JSON and the config dialog shows empty.
+    $bomCount = 0
+    Get-ChildItem "$xppDir\*.json" -ErrorAction SilentlyContinue | ForEach-Object {
+        $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            [System.IO.File]::WriteAllBytes($_.FullName, $bytes[3..($bytes.Length - 1)])
+            Write-Host "  Stripped BOM from $($_.Name)"
+            $bomCount++
+        }
+    }
+    if ($bomCount -gt 0) {
+        Write-UdeLog -LogFile $logFile -Step "bom-strip" -Status "OK" -Detail "stripped BOM from $bomCount config(s)"
+    }
+
+    # 13. Verify: confirm exactly one config exists for this UDE name
+    $allConfigs = Get-ChildItem -Path $xppDir -Filter "${Name}___*.json" -ErrorAction SilentlyContinue
+    if (@($allConfigs).Count -gt 1) {
+        Write-Host "  WARNING: Multiple configs found for $Name -- expected exactly one:"
+        $allConfigs | ForEach-Object { Write-Host "    $($_.Name)" }
+        Write-UdeLog -LogFile $logFile -Step "verify" -Status "WARN" -Detail "multiple configs for ${Name}: $(@($allConfigs).Count)"
+    } else {
+        Write-UdeLog -LogFile $logFile -Step "verify" -Status "OK" -Detail "single config confirmed for $Name"
+    }
 
     # Update ude-configs.json lastUsed
     Update-UdeLastUsed -Name $Name -Version $ver

@@ -37,9 +37,9 @@ description: >
 
 Switches Visual Studio 2022 UDE from one online D365 F&O environment to another, using a JSON config file to track known UDEs. Main flow is three phases:
 
-- **Phase A (pre-flight)**: Load config, snapshot XPPConfig folder state, decide download policy.
+- **Phase A (pre-flight)**: Load config, run schema v4 migration if needed, snapshot XPPConfig + RuntimeSymLinks folder state, decide download policy.
 - **Phase B (UIA)**: Handle existing VS → Launch → Dismiss Start Window → Ensure Skip Discovery → Close solution → Tools → Connect to online Dataverse → Reconnect-No → Login → URL → Wait for validation → Select Solution → Download-prompt.
-- **Phase C (post-switch)**: Identify new XPP config, retarget `ModelStoreFolder`, set as Current via VS UI, update `lastUsed`/`lastKnownVersion`.
+- **Phase C (post-switch, v4 config lifecycle)**: Detect VS-created artifacts (config JSON, RuntimeSymLinks folder, XPPConfig subfolder, XRef DB name, org ID). Decide: first-time connect / same-version reconnect / version change. Create or update owned config `{name}___{version}.json`, retarget `ModelStoreFolder` + `DebugSourceFolder` + `RuntimePackagesDirectory`, delete VS-generated duplicates, clean up old version artifacts on version change (detach XRef DB, delete old subfolder/config/RSL folder), update tracked fields in `ude-configs.json`, set as Current via VS UI, verify single config per UDE.
 
 ## Invocation
 
@@ -149,12 +149,23 @@ Phase B — VS interaction (UIA)
     - else → click Yes, monitor progress
 16. If download triggered → wait for VS exit (wait_for_vs_exit.ps1) → relaunch if exited
 
-Phase C — post-switch (disk + VS UI)
-17. Diff XPPConfig to identify new config JSON (diff_xppconfig.ps1)
-18. Create/reuse owned {name}___{version}.json, retarget ModelStoreFolder (retarget_xpp_config.ps1)
-19. Set owned config as Current via VS UI (select_current_xpp_config.ps1)
-20. Update lastUsed + lastKnownVersion in ude-configs.json
-21. Report UDE_SWITCH_OK
+Phase C — post-switch config lifecycle (one config per UDE, schemaVersion 4)
+17. Diff XPPConfig + RuntimeSymLinks to detect VS-created artifacts (diff_xppconfig.ps1)
+    → emits: XPP_JSON, VS_ORG_NAME, XREF_DB_NAME, NEW_RSL_FOLDER, NEW_XPP_SUBFOLDER
+18. Decide: first-time connect / same-version reconnect / version change
+19. Create/update owned {name}___{version}.json (copy from VS-generated, cosmetic rename)
+20. Retarget ModelStoreFolder + DebugSourceFolder + RuntimePackagesDirectory (retarget_xpp_config.ps1)
+21. Delete VS-generated config JSON (replaced by owned copy)
+22. Delete VS-generated duplicate RuntimeSymLinks folders (keep tracked one)
+23. On version change: cleanup old artifacts (cleanup_old_version.ps1)
+    → detach old XRef DB, delete old XPPConfig subfolder + config JSON
+    → update standardCodebasePath to new platform version
+24. Update tracked fields in ude-configs.json (xppConfigFile, xppConfigSubfolder,
+    runtimeSymLinkFolder, xrefDbName, vsOrgName)
+25. Set owned config as Current via VS UI (select_current_xpp_config.ps1)
+26. Verify: exactly one config exists for this UDE name
+27. Update lastUsed + lastKnownVersion in ude-configs.json
+28. Report UDE_SWITCH_OK
 ```
 
 ## Error handling
