@@ -457,7 +457,8 @@ try {
         $cleanOut = & "$PSScriptRoot\cleanup_old_version.ps1" `
             -OldXrefDbName $oldXrefDb `
             -OldXppSubfolder $oldXppSub `
-            -OldConfigJson $oldConfigJson
+            -OldConfigJson $oldConfigJson `
+            -OldRslFolder $prevRslFolder
         $cleanOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "cleanup-old" -Status "INFO" -Detail $_ }
 
         # Update standardCodebasePath to new version
@@ -541,17 +542,29 @@ try {
     # 12b. Strip UTF-8 BOM from all XPP config JSONs
     # VS adds BOM (EF BB BF) when it rewrites configs to save IsCurrent.
     # On next restart, VS fails to parse BOM'd JSON and the config dialog shows empty.
-    $bomCount = 0
-    Get-ChildItem "$xppDir\*.json" -ErrorAction SilentlyContinue | ForEach-Object {
-        $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
-        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-            [System.IO.File]::WriteAllBytes($_.FullName, $bytes[3..($bytes.Length - 1)])
-            Write-Host "  Stripped BOM from $($_.Name)"
-            $bomCount++
+    # VS writes asynchronously -- wait for it to finish, then strip. Retry to catch
+    # late writes (VS may rewrite multiple configs when toggling Current on one).
+    $totalBomCount = 0
+    for ($bomPass = 1; $bomPass -le 3; $bomPass++) {
+        if ($bomPass -eq 1) {
+            Start-Sleep -Seconds 5
+        } else {
+            Start-Sleep -Seconds 3
         }
+        $bomCount = 0
+        Get-ChildItem "$xppDir\*.json" -ErrorAction SilentlyContinue | ForEach-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+                [System.IO.File]::WriteAllBytes($_.FullName, $bytes[3..($bytes.Length - 1)])
+                Write-Host "  Stripped BOM from $($_.Name) (pass $bomPass)"
+                $bomCount++
+            }
+        }
+        $totalBomCount += $bomCount
+        if ($bomCount -eq 0) { break }
     }
-    if ($bomCount -gt 0) {
-        Write-UdeLog -LogFile $logFile -Step "bom-strip" -Status "OK" -Detail "stripped BOM from $bomCount config(s)"
+    if ($totalBomCount -gt 0) {
+        Write-UdeLog -LogFile $logFile -Step "bom-strip" -Status "OK" -Detail "stripped BOM from $totalBomCount config(s) across $bomPass pass(es)"
     }
 
     # 13. Verify: confirm exactly one config exists for this UDE name
