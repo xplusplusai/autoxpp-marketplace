@@ -11,9 +11,7 @@
 #   XPP_CONFIG_ALREADY_CURRENT name=<name>
 #   XPP_CONFIG_ERROR <reason>
 #
-# Self-contained - does not depend on uia_helpers.ps1.
-# When integrated into the MCP skill, replace the inline helpers
-# with: . "$PSScriptRoot\uia_helpers.ps1"
+# Dot-sources uia_helpers.ps1 for Dismiss-D365UpdateDialog.
 
 param(
     [Parameter(Mandatory=$true)][string]$ConfigName,
@@ -26,21 +24,8 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
 
-# --- Inline UIA helpers (replace with dot-source in MCP skill) ---
-
-function Get-VsProcess {
-    Get-Process devenv -ErrorAction SilentlyContinue |
-        Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } |
-        Select-Object -First 1
-}
-
-function Get-VsAutomationElement {
-    # Use FromHandle for a reliable UIA tree -- PID-based RootElement.FindFirst
-    # returns stale trees during VS startup that miss menu items.
-    $p = Get-VsProcess
-    if (-not $p -or $p.MainWindowHandle -eq [IntPtr]::Zero) { return $null }
-    return [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
-}
+# Dot-source shared UIA helpers for Dismiss-D365UpdateDialog
+. "$PSScriptRoot\uia_helpers.ps1"
 
 # --- Main logic ---
 
@@ -84,8 +69,19 @@ while ((Get-Date) -lt $menuDeadline) {
                 [System.Windows.Automation.AutomationElement]::NameProperty, 'Extensions')))
         if (-not $extMenu) { throw "Extensions menu not found -- D365 extension may still be loading" }
 
-        $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-        Start-Sleep -Milliseconds 800
+        # UIA ExpandCollapse does not send real Win32 mouse messages, so the D365
+        # extension may never lazy-load. After 3 UIA-only attempts, switch to a
+        # BoundingRectangle coordinate click which fires WM_LBUTTONDOWN and
+        # triggers the extension's activation handler.
+        if ($attempt -le 3) {
+            $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+        } else {
+            if ($attempt -eq 4) { Write-Host "  Switching to coord-click (UIA Expand may not trigger D365 extension load)" }
+            Show-Vs
+            $rect = $extMenu.Current.BoundingRectangle
+            [UdeSwitchUiaNative]::ClickAt([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+        }
+        Start-Sleep -Milliseconds 1500
 
         $d365 = $extMenu.FindFirst(
             [System.Windows.Automation.TreeScope]::Descendants,
@@ -93,7 +89,13 @@ while ((Get-Date) -lt $menuDeadline) {
                 [System.Windows.Automation.AutomationElement]::NameProperty, 'Dynamics 365')))
         if (-not $d365) { throw "Dynamics 365 submenu not found -- extension may still be loading" }
 
-        $d365.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+        # Same logic for D365 submenu: coord-click after initial UIA attempts
+        if ($attempt -le 3) {
+            $d365.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+        } else {
+            $rect = $d365.Current.BoundingRectangle
+            [UdeSwitchUiaNative]::ClickAt([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+        }
         Start-Sleep -Milliseconds 800
 
         $cfgItem = $d365.FindFirst(
@@ -107,7 +109,18 @@ while ((Get-Date) -lt $menuDeadline) {
         break
     } catch {
         Write-Host "  Attempt $attempt`: $_"
-        try { if ($extMenu) { $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } } catch {}
+        # Close any open menus: UIA Collapse for early attempts, Escape key for coord-click
+        if ($attempt -le 3) {
+            try { if ($extMenu) { $extMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse() } } catch {}
+        } else {
+            [UdeSwitchUiaNative]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
+            [UdeSwitchUiaNative]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 300
+            [UdeSwitchUiaNative]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
+            [UdeSwitchUiaNative]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)
+        }
+        # Check if the D365 extension update dialog appeared and dismiss it
+        Dismiss-D365UpdateDialog | Out-Null
     }
 }
 if (-not $menuOpened) {
