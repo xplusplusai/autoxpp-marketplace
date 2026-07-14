@@ -19,13 +19,13 @@ Without this skill, every iteration of the code → build → test → fix cycle
 - **Compilation monitoring** — polls build status via UI Automation without bringing VS to foreground (terminal stays visible for user feedback)
 - **Post-build dialog handling** — dismisses reconnect prompts, solution selection dialogs, and SDK popups automatically
 - **Deployment monitoring** — reads the VS Output window via clipboard to track upload and deployment progress
-- **Two-phase completion** — distinguishes `BUILD_STATUS:SUCCEEDED` (compilation done) from `DEPLOY_STATUS:DEPLOYED` (code live on target environment). Never reports "done" after compilation alone.
+- **Two-phase completion (UDE)** — distinguishes `BUILD_STATUS:SUCCEEDED` (compilation done) from `DEPLOY_STATUS:DEPLOYED` (code live on target environment). Never reports "done" after compilation alone. On a **OneBox** there is only one phase: the compile writes straight into the local runtime, so `BUILD_STATUS:SUCCEEDED` is completion.
 
 ## Prerequisites
 
 - **PowerShell** with UI Automation assemblies (built-in on Windows)
-- **Visual Studio 2022** with D365 F&O development tools (UDE)
-- **Connected online environment** configured in VS for deployment
+- **Visual Studio 2022** with D365 F&O development tools (UDE **or** OneBox / Tier-1 VM)
+- **Connected online environment** configured in VS for deployment — **UDE only**. On a OneBox the build compiles directly into the local `PackagesLocalDirectory`; there is no online deploy step.
 
 ## Supported Scenarios
 
@@ -49,5 +49,5 @@ Without this skill, every iteration of the code → build → test → fix cycle
 |-----------|-----------|-------------|
 | `{ModelName}` | Caller param → git auto-detect → ask user | Which model to build |
 | `{SyncDatabase}` | Auto-detect from changed artifact types → ask user | Schema changes (AxTable, AxEdt, AxView, etc.) need sync; code-only (AxClass, AxForm) does not |
-| `{DeployOnline}` | Default: true | Deploy to connected online environment |
+| `{DeployOnline}` | Auto-resolved from env type: **UDE → true**, **OneBox → false** (see SKILL.md "OneBox vs UDE Detection") | Deploy to connected online environment. OneBox has none, so this is off and Phase B (deploy monitoring) is skipped. |
 
