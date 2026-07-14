@@ -52,7 +52,10 @@ Switches Visual Studio 2022 UDE from one online D365 F&O environment to another,
 /autoxpp-ude-switch <name> --no-download     → skip metadata download (warn)
 /autoxpp-ude-switch <name> --close-existing  → if VS2022 is already open, close it first, then switch (fresh session)
 /autoxpp-ude-switch <name> --manual-confirm  → user completed switch manually; just update lastUsed/activeEnv
+/autoxpp-ude-switch --drift-check    → compare VS's live UDE vs config activeEnv (machine-readable)
 ```
+
+**Drift check (`scripts/check_ude_drift.ps1`):** Emits ONE parseable verdict line comparing the UDE VS 2022 last loaded (newest `XPPConfig\{name}___{ver}.json` — no UI automation) against `ude-configs.json → activeEnv`. Verdicts: `IN_SYNC`, `DRIFT`, `VS_UNKNOWN`, `NO_VS_CONFIG`, `NO_CONFIG`. Run by session-start and lifecycle pre-flight to catch a manual VS switch that left `activeEnv` stale (see CLAUDE.md "UDE Drift Check"). Reconcile via `<name> --manual-confirm` (VS→config) or `<activeEnv>` full switch (config→VS).
 
 ## Prerequisites (one-time per machine, NOT automated)
 
