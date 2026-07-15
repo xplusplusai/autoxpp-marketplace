@@ -1,8 +1,8 @@
 # ensure_skip_discovery.ps1
 # Opens Tools > Options > Power Platform Tools > General and ensures
 # "Skip Discovery when connecting to Dataverse" is checked.
-# Uses UIA + clipboard paste via keybd_event (crosses UIPI for elevated VS).
-# Falls back to DTE COM via separate process when VS lacks foreground focus.
+# Uses UIA ValuePattern + SendMessage for fully headless operation
+# (works when RDP is minimized or disconnected).
 #
 # Emits:
 #   SKIP_DISCOVERY_ALREADY_CHECKED
@@ -20,6 +20,20 @@ Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
 
 . "$PSScriptRoot\uia_helpers.ps1"
+
+# --- SendMessage P/Invoke for headless keyboard input to HWND ---
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class UdeSkipDiscoveryMsg {
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public const uint WM_KEYDOWN = 0x0100;
+    public const uint WM_KEYUP   = 0x0101;
+    public const int  VK_RETURN  = 0x0D;
+    public const int  VK_DOWN    = 0x28;
+}
+"@ -ErrorAction SilentlyContinue
 
 # --- DTE helper script content (written to temp and run via Start-Process) ---
 $script:DteHelperScript = @'
@@ -68,9 +82,8 @@ $CT  = [System.Windows.Automation.ControlType]
 $winCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Window)
 $cbCond  = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::CheckBox)
 $menuItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::MenuItem)
-$treeItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::TreeItem)
 
-# --- Close any stale Options dialog via UIA (no SendKeys) ---
+# --- Close any stale Options dialog via UIA ---
 $windows = $vsElem.FindAll($TS::Descendants, $winCond)
 foreach ($w in $windows) {
     if ($w.Current.Name -eq 'Options') {
@@ -97,9 +110,6 @@ if (Test-VsStartWindow) {
 }
 
 # --- Open Options dialog: retry loop with UIA-first + DTE COM fallback ---
-# VS extensions (including Power Platform Tools) can take minutes to load.
-# Neither UIA menu expansion nor DTE COM will work until loading completes,
-# so we retry the full UIA->DTE sequence with pauses between attempts.
 Show-Vs
 Start-Sleep -Milliseconds 500
 
@@ -113,15 +123,13 @@ while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
     $elapsed = [math]::Round($MenuTimeoutSeconds - $remaining)
     Write-Host "Opening Tools > Options (attempt $attempt, ${elapsed}s elapsed, ${remaining}s remaining)..."
 
-    # Re-acquire VS automation element each attempt -- the UIA tree is stale if
-    # acquired during VS startup and won't reflect newly loaded extensions.
     $vsElem = Get-VsAutomationElement -VsPid $vs.Id
     if (-not $vsElem) {
         Write-Host "  Cannot get VS automation element -- extensions may still be loading, retrying..."
         Start-Sleep -Seconds 15; continue
     }
 
-    # --- Strategy A: UIA menu expansion (works when VS has foreground) ---
+    # --- Strategy A: UIA menu expansion ---
     Write-Host "  Trying UIA menu expansion..."
     $items = $vsElem.FindAll($TS::Descendants, $menuItemCond)
     $toolsMenu = $null
@@ -138,8 +146,6 @@ while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
         $toolsMenu.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Start-Sleep -Milliseconds 1500
 
-        # Search the Tools menu element's own descendants (NOT vsElem --
-        # WPF menu popups are linked to the menu item, not the main window).
         $menuItems = $toolsMenu.FindAll($TS::Descendants, $menuItemCond)
         $optionsItem = $null
         foreach ($mi in $menuItems) {
@@ -179,7 +185,6 @@ while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
             -ArgumentList "-ExecutionPolicy Bypass -File `"$helperPath`"" `
             -PassThru -WindowStyle Hidden
 
-        # Poll for Options dialog (30s per DTE attempt)
         $dteDeadline = (Get-Date).AddSeconds(30)
         while ((Get-Date) -lt $dteDeadline) {
             $vsElem = Get-VsAutomationElement -VsPid $vs.Id
@@ -193,7 +198,6 @@ while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
             Start-Sleep -Milliseconds 500
         }
 
-        # Clean up helper process if this attempt failed
         if (-not $optionsDlg -and $dteProc -and -not $dteProc.HasExited) {
             Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue
             $dteProc = $null
@@ -212,176 +216,72 @@ if (-not $optionsDlg) {
 }
 Write-Host "Options dialog found"
 
-# --- Navigate to Power Platform Tools ---
+# --- Navigate to Power Platform Tools page (fully headless) ---
+# Step 1: Find search box by AutomationId and set search text via ValuePattern
 $skipCb = $null
-
-# Strategy 1: Use clipboard paste to type in the search box.
-# SendKeys::SendWait throws "Access is denied" when VS is elevated (UIPI).
-# keybd_event works cross-elevation, so: clipboard + Ctrl+V triggers real
-# TextChanged events in the WPF search box.
-$editCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
-$edits = @($optionsDlg.FindAll($TS::Descendants, $editCond))
-$searchBox = $null
-foreach ($e in $edits) {
-    $aid = "" + $e.Current.AutomationId
-    $nm  = "" + $e.Current.Name
-    if ($aid -match 'Search|Filter' -or $nm -match 'Search|Filter') {
-        $searchBox = $e; break
-    }
-}
+$searchBoxCond = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, "PART_SearchBox")
+$searchBox = $optionsDlg.FindFirst($TS::Descendants, $searchBoxCond)
 
 if ($searchBox) {
-    Write-Host "Using search box to filter to 'Power Platform' (clipboard paste)..."
+    Write-Host "Using search box to filter to 'Power Platform' (ValuePattern)..."
     try {
-        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
-        Show-Vs
+        $vp = $searchBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+
+        # Clear existing search first
+        $vp.SetValue("")
         Start-Sleep -Milliseconds 300
 
-        # Focus the search box via coord-click
-        $rect = $searchBox.Current.BoundingRectangle
-        if ($rect.Width -gt 0 -and $rect.Height -gt 0) {
-            [UdeSwitchUiaNative]::ClickAt([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
-            Start-Sleep -Milliseconds 300
+        # Set search text -- ValuePattern.SetValue is programmatic and works headless
+        $vp.SetValue("Power Platform")
+        $readBack = $vp.Current.Value
+        Write-Host "  Set search text: '$readBack'"
+        Start-Sleep -Seconds 2
+
+        # Check if search found results
+        $liveTextCond = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, "PART_LiveSearchTextBlock")
+        $liveText = $optionsDlg.FindFirst($TS::Descendants, $liveTextCond)
+        if ($liveText) {
+            Write-Host "  Search status: '$($liveText.Current.Name)'"
+        }
+
+        # Step 2: Navigate to first result via SendMessage to the Win32 TreeView
+        # The Options tree is a SysTreeView32 native control. UIA can't enumerate
+        # its virtualized items, but SendMessage targets the HWND directly and works
+        # regardless of foreground/rendering state.
+        $treeViewCond = New-Object System.Windows.Automation.PropertyCondition($AE::ClassNameProperty, "SysTreeView32")
+        $treeView = $optionsDlg.FindFirst($TS::Descendants, $treeViewCond)
+
+        if ($treeView -and $treeView.Current.NativeWindowHandle -ne 0) {
+            $treeHwnd = [IntPtr]$treeView.Current.NativeWindowHandle
+            Write-Host "  Selecting first search result via SendMessage (TreeView HWND: $treeHwnd)..."
+
+            # Down arrow selects the first filtered tree item and loads its page
+            [UdeSkipDiscoveryMsg]::SendMessage($treeHwnd, [UdeSkipDiscoveryMsg]::WM_KEYDOWN, [IntPtr][UdeSkipDiscoveryMsg]::VK_DOWN, [IntPtr]::Zero) | Out-Null
+            [UdeSkipDiscoveryMsg]::SendMessage($treeHwnd, [UdeSkipDiscoveryMsg]::WM_KEYUP, [IntPtr][UdeSkipDiscoveryMsg]::VK_DOWN, [IntPtr]::Zero) | Out-Null
+            Start-Sleep -Seconds 2
+
+            # Look for the Skip Discovery checkbox on the now-loaded page
+            $deadline2 = (Get-Date).AddSeconds(10)
+            while ((Get-Date) -lt $deadline2) {
+                $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
+                foreach ($cb in $checkboxes) {
+                    if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
+                }
+                if ($skipCb) { break }
+                Start-Sleep -Milliseconds 500
+            }
+            if ($skipCb) { Write-Host "  Found checkbox via search + SendMessage navigation" }
         } else {
-            $searchBox.SetFocus()
-            Start-Sleep -Milliseconds 300
+            Write-Host "  TreeView not found or has no HWND"
         }
-
-        # Ctrl+A to select all (keybd_event: 0x11=Ctrl, 0x41=A)
-        [UdeSwitchUiaNative]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)   # Ctrl down
-        [UdeSwitchUiaNative]::keybd_event(0x41, 0, 0, [UIntPtr]::Zero)   # A down
-        [UdeSwitchUiaNative]::keybd_event(0x41, 0, 2, [UIntPtr]::Zero)   # A up
-        [UdeSwitchUiaNative]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)   # Ctrl up
-        Start-Sleep -Milliseconds 100
-
-        # Delete key (0x2E)
-        [UdeSwitchUiaNative]::keybd_event(0x2E, 0, 0, [UIntPtr]::Zero)
-        [UdeSwitchUiaNative]::keybd_event(0x2E, 0, 2, [UIntPtr]::Zero)
-        Start-Sleep -Milliseconds 200
-
-        # Set clipboard and paste via Ctrl+V (keybd_event crosses UIPI)
-        [System.Windows.Forms.Clipboard]::SetText("Power Platform")
-        Start-Sleep -Milliseconds 100
-        [UdeSwitchUiaNative]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)   # Ctrl down
-        [UdeSwitchUiaNative]::keybd_event(0x56, 0, 0, [UIntPtr]::Zero)   # V down
-        [UdeSwitchUiaNative]::keybd_event(0x56, 0, 2, [UIntPtr]::Zero)   # V up
-        [UdeSwitchUiaNative]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)   # Ctrl up
-        Write-Host "  Pasted 'Power Platform' via Ctrl+V"
-        Start-Sleep -Seconds 2
-
-        # Press Enter to navigate to the first matching page.
-        # The search filters the tree but the right pane stays on the current page
-        # until Enter selects the first result. The native Win32 tree in the Options
-        # dialog has no UIA TreeItem children, so keyboard navigation is the only way.
-        [UdeSwitchUiaNative]::keybd_event(0x0D, 0, 0, [UIntPtr]::Zero)   # Enter down
-        [UdeSwitchUiaNative]::keybd_event(0x0D, 0, 2, [UIntPtr]::Zero)   # Enter up
-        Write-Host "  Pressed Enter to navigate to first result"
-        Start-Sleep -Seconds 2
-
-        # After filtering + Enter, look for the Skip Discovery checkbox
-        $deadline2 = (Get-Date).AddSeconds(10)
-        while ((Get-Date) -lt $deadline2) {
-            $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
-            foreach ($cb in $checkboxes) {
-                if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
-            }
-            if ($skipCb) { break }
-            Start-Sleep -Milliseconds 500
-        }
-        if ($skipCb) { Write-Host "  Found checkbox via search" }
     } catch {
-        Write-Host "  Search box approach failed: $_"
+        Write-Host "  Search approach failed: $_"
     }
+} else {
+    Write-Host "  Search box (PART_SearchBox) not found in Options dialog"
 }
 
-# Strategy 2: Walk the TreeView directly
-if (-not $skipCb) {
-    Write-Host "Walking TreeView to find Power Platform Tools..."
-
-    # The Options tree may have items outside the visible scroll region that UIA
-    # cannot enumerate. Find the TreeView control and scroll it to load all items.
-    $treeCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Tree)
-    $treeView = $optionsDlg.FindFirst($TS::Descendants, $treeCond)
-    if ($treeView) {
-        try {
-            $scrollPattern = $treeView.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern)
-            # Scroll to bottom then back to top to force all items into UIA tree
-            $scrollPattern.SetScrollPercent(
-                [System.Windows.Automation.ScrollPattern]::NoScroll, 100)
-            Start-Sleep -Milliseconds 300
-            $scrollPattern.SetScrollPercent(
-                [System.Windows.Automation.ScrollPattern]::NoScroll, 0)
-            Start-Sleep -Milliseconds 300
-            Write-Host "  Scrolled TreeView to load all items"
-        } catch {
-            Write-Host "  TreeView scroll not available: $_"
-        }
-    }
-
-    $treeItems = $optionsDlg.FindAll($TS::Descendants, $treeItemCond)
-    Write-Host "  Found $($treeItems.Count) tree items"
-
-    $ppItem = $null
-    foreach ($ti in $treeItems) {
-        $tiName = $ti.Current.Name
-        if ($tiName -match 'Power Platform') { $ppItem = $ti; break }
-    }
-
-    # If not found, log all tree item names for diagnostics
-    if (-not $ppItem) {
-        Write-Host "  'Power Platform' TreeItem not found. Available tree items:"
-        foreach ($ti in $treeItems) { Write-Host "    '$($ti.Current.Name)'" }
-    }
-
-    if ($ppItem) {
-        Write-Host "  Found '$($ppItem.Current.Name)'"
-
-        # ScrollIntoView if supported (makes the item visible and UIA-accessible)
-        try {
-            $ppItem.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern).ScrollIntoView()
-            Start-Sleep -Milliseconds 300
-        } catch {}
-
-        # Select it (loads its page in the right pane)
-        try {
-            $ppItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-            Start-Sleep -Milliseconds 500
-        } catch { Write-Host "  SelectionItemPattern not available: $_" }
-
-        # Expand to reveal General child
-        try {
-            $ppItem.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-            Start-Sleep -Milliseconds 500
-        } catch { Write-Host "  ExpandCollapsePattern not available (may be leaf node)" }
-
-        # Try to select the General child (some VS versions show it as a sub-node)
-        $children = $ppItem.FindAll($TS::Children, $treeItemCond)
-        foreach ($child in $children) {
-            if ($child.Current.Name -eq 'General') {
-                Write-Host "  Selecting 'General' child node"
-                try {
-                    $child.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-                    Start-Sleep -Milliseconds 1000
-                } catch {}
-                break
-            }
-        }
-
-        # Now look for checkbox in the right pane
-        $deadline3 = (Get-Date).AddSeconds(10)
-        while ((Get-Date) -lt $deadline3) {
-            $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
-            foreach ($cb in $checkboxes) {
-                if ($cb.Current.Name -match 'Skip Discovery') { $skipCb = $cb; break }
-            }
-            if ($skipCb) { break }
-            Start-Sleep -Milliseconds 500
-        }
-        if ($skipCb) { Write-Host "  Found checkbox via tree navigation" }
-    }
-}
-
-# Strategy 3: Brute-force search all checkboxes (Options dialog might already show it)
+# --- Fallback: brute-force scan all checkboxes (in case page already loaded) ---
 if (-not $skipCb) {
     Write-Host "Scanning all checkboxes in Options dialog..."
     $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
@@ -391,135 +291,13 @@ if (-not $skipCb) {
     if ($skipCb) { Write-Host "  Found checkbox via brute-force scan" }
 }
 
-# Strategy 4: DTE COM -- read/set the property directly via COM, bypassing UI entirely
-if (-not $skipCb) {
-    Write-Host "Trying DTE COM to set Skip Discovery directly..."
-
-    # Close the Options dialog first (it blocks DTE property access)
-    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
-    if ($cancelBtn) {
-        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-        Start-Sleep -Milliseconds 500
-    }
-
-    # DTE COM helper that reads/sets the Skip Discovery property
-    $dteSkipScript = @'
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-[ComImport, Guid("00000016-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IOleMessageFilter {
-    [PreserveSig] int HandleInComingCall(int a, IntPtr b, int c, IntPtr d);
-    [PreserveSig] int RetryRejectedCall(IntPtr a, int b, int c);
-    [PreserveSig] int MessagePending(IntPtr a, int b, int c);
-}
-public class MF : IOleMessageFilter {
-    [DllImport("ole32.dll")] static extern int CoRegisterMessageFilter(IOleMessageFilter f, out IOleMessageFilter old);
-    public static void Register() { IOleMessageFilter old; CoRegisterMessageFilter(new MF(), out old); }
-    public int HandleInComingCall(int a, IntPtr b, int c, IntPtr d) { return 0; }
-    public int RetryRejectedCall(IntPtr a, int b, int c) { return c == 2 ? 300 : -1; }
-    public int MessagePending(IntPtr a, int b, int c) { return 2; }
-}
-"@
-[MF]::Register()
-
-try {
-    $dte = [System.Runtime.InteropServices.Marshal]::GetActiveObject("VisualStudio.DTE.17.0")
-} catch {
-    Write-Host "DTE_NOT_FOUND"
-    exit 1
-}
-
-# Try known category names for Power Platform Tools extension
-$categoryNames = @(
-    "Power Platform Tools",
-    "PowerPlatformTools",
-    "Power Platform Tools - General",
-    "Dynamics365.PowerPlatformTools"
-)
-$pageNames = @("General", "")
-
-$found = $false
-foreach ($cat in $categoryNames) {
-    foreach ($pg in $pageNames) {
-        try {
-            $props = if ($pg) { $dte.Properties($cat, $pg) } else { $dte.Properties($cat) }
-            # Search for skip discovery property
-            foreach ($p in $props) {
-                if ($p.Name -match 'Skip.*Discovery|SkipDiscovery') {
-                    $val = $p.Value
-                    if ($val -eq $true -or $val -eq 1) {
-                        Write-Host "DTE_ALREADY_CHECKED category=$cat page=$pg prop=$($p.Name)"
-                        exit 0
-                    } else {
-                        $p.Value = $true
-                        Write-Host "DTE_SET_CHECKED category=$cat page=$pg prop=$($p.Name)"
-                        exit 0
-                    }
-                }
-            }
-            # List available properties for diagnostics
-            $propNames = @()
-            foreach ($p in $props) { $propNames += $p.Name }
-            Write-Host "DTE_PROPS category=$cat page=$pg props=$($propNames -join ',')"
-        } catch {
-            # Category/page not found, try next
-        }
-    }
-}
-
-Write-Host "DTE_SKIP_NOT_FOUND"
-exit 2
-'@
-
-    $helperPath = Join-Path $env:TEMP "ude_dte_skip_discovery.ps1"
-    Set-Content -Path $helperPath -Value $dteSkipScript -Encoding UTF8
-
-    $skipProc = Start-Process -FilePath "powershell.exe" `
-        -ArgumentList "-ExecutionPolicy Bypass -File `"$helperPath`"" `
-        -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput (Join-Path $env:TEMP "ude_dte_skip_stdout.txt") `
-        -RedirectStandardError  (Join-Path $env:TEMP "ude_dte_skip_stderr.txt")
-
-    $skipProc.WaitForExit(15000)
-    $dteOutput = ""
-    if (Test-Path (Join-Path $env:TEMP "ude_dte_skip_stdout.txt")) {
-        $dteOutput = Get-Content (Join-Path $env:TEMP "ude_dte_skip_stdout.txt") -Raw
-        if ($dteOutput) { Write-Host "  DTE output: $($dteOutput.Trim())" }
-    }
-
-    if ($skipProc.HasExited -and $skipProc.ExitCode -eq 0) {
-        if ($dteOutput -match 'DTE_ALREADY_CHECKED') {
-            Write-Host "SKIP_DISCOVERY_ALREADY_CHECKED"
-            # Clean up DTE helper from earlier
-            if ($dteProc -and -not $dteProc.HasExited) {
-                $dteProc.WaitForExit(5000)
-                if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
-            }
-            exit 0
-        } elseif ($dteOutput -match 'DTE_SET_CHECKED') {
-            Write-Host "SKIP_DISCOVERY_CHECKED"
-            if ($dteProc -and -not $dteProc.HasExited) {
-                $dteProc.WaitForExit(5000)
-                if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
-            }
-            exit 0
-        }
-    }
-
-    if (-not $skipProc.HasExited) {
-        Stop-Process -Id $skipProc.Id -Force -ErrorAction SilentlyContinue
-    }
-    Write-Host "  DTE COM property approach did not succeed"
-}
-
 if (-not $skipCb) {
     Write-Host "Visible checkboxes:"
     $checkboxes = $optionsDlg.FindAll($TS::Descendants, $cbCond)
     foreach ($cb in $checkboxes) { Write-Host "  '$($cb.Current.Name)'" }
     # Clean up DTE helper
     if ($dteProc -and -not $dteProc.HasExited) {
-        $dteProc.WaitForExit(5000)
+        $null = $dteProc.WaitForExit(5000)
         if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
     }
     Write-Host "SKIP_DISCOVERY_FAIL 'Skip Discovery' checkbox not found"
@@ -538,9 +316,8 @@ if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
-    # Clean up DTE helper
     if ($dteProc -and -not $dteProc.HasExited) {
-        $dteProc.WaitForExit(5000)
+        $null = $dteProc.WaitForExit(5000)
         if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
     }
     exit 0
@@ -558,7 +335,7 @@ if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
     if ($dteProc -and -not $dteProc.HasExited) {
-        $dteProc.WaitForExit(5000)
+        $null = $dteProc.WaitForExit(5000)
         if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
     }
     Write-Host "SKIP_DISCOVERY_FAIL toggle did not stick (state=$newState)"
@@ -568,40 +345,29 @@ if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
 # --- Click OK to save ---
 $okClicked = $false
 
-# Strategy A: Find OK pane (direct child) with inner Button
-$allChildren = $optionsDlg.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
-foreach ($c in $allChildren) {
-    if ($c.Current.Name -eq 'OK') {
-        $btnCond2 = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
-        $innerBtn = $c.FindFirst($TS::Descendants, $btnCond2)
-        if ($innerBtn) {
-            try {
-                $innerBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-                $okClicked = $true
-                Write-Host "OK inner button invoked"
-            } catch {}
-        }
-        if (-not $okClicked) {
-            # Coordinate-click the pane center
-            $rect = $c.Current.BoundingRectangle
-            $cx = [int]($rect.X + $rect.Width / 2)
-            $cy = [int]($rect.Y + $rect.Height / 2)
-            Show-Vs
-            Start-Sleep -Milliseconds 300
-            [UdeSwitchUiaNative]::ClickAt($cx, $cy)
-            $okClicked = $true
-            Write-Host "OK pane clicked at ($cx, $cy)"
-        }
-        break
-    }
+# Strategy A: Find OK button (Win32 Button with HWND) via InvokePattern
+$okBtn = Find-ButtonByName -Parent $optionsDlg -Name 'OK'
+if ($okBtn) {
+    Invoke-Button -Button $okBtn -VsHwnd $vs.MainWindowHandle | ForEach-Object { Write-Host "OK: $_" }
+    $okClicked = $true
 }
 
-# Strategy B: Find OK Button by name (descendant search)
+# Strategy B: Find OK pane (direct child) and invoke inner button or use SendMessage
 if (-not $okClicked) {
-    $okBtn = Find-ButtonByName -Parent $optionsDlg -Name 'OK'
-    if ($okBtn) {
-        Invoke-Button -Button $okBtn -VsHwnd $vs.MainWindowHandle | ForEach-Object { Write-Host "OK: $_" }
-        $okClicked = $true
+    $allChildren = $optionsDlg.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($c in $allChildren) {
+        if ($c.Current.Name -eq 'OK') {
+            $hwnd = $c.Current.NativeWindowHandle
+            if ($hwnd -ne 0) {
+                # Send Enter to the OK button's HWND
+                $okHwnd = [IntPtr]$hwnd
+                [UdeSkipDiscoveryMsg]::SendMessage($okHwnd, [UdeSkipDiscoveryMsg]::WM_KEYDOWN, [IntPtr][UdeSkipDiscoveryMsg]::VK_RETURN, [IntPtr]::Zero) | Out-Null
+                [UdeSkipDiscoveryMsg]::SendMessage($okHwnd, [UdeSkipDiscoveryMsg]::WM_KEYUP, [IntPtr][UdeSkipDiscoveryMsg]::VK_RETURN, [IntPtr]::Zero) | Out-Null
+                $okClicked = $true
+                Write-Host "OK sent via SendMessage to HWND $okHwnd"
+            }
+            break
+        }
     }
 }
 
@@ -612,7 +378,7 @@ if (-not $okClicked) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
     }
     if ($dteProc -and -not $dteProc.HasExited) {
-        $dteProc.WaitForExit(5000)
+        $null = $dteProc.WaitForExit(5000)
         if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
     }
     Write-Host "SKIP_DISCOVERY_FAIL Could not click OK to save"
@@ -623,9 +389,12 @@ Start-Sleep -Milliseconds 1000
 
 # Verify dialog closed
 $stillOpen = $false
-$windows = $vsElem.FindAll($TS::Descendants, $winCond)
-foreach ($w in $windows) {
-    if ($w.Current.Name -eq 'Options') { $stillOpen = $true; break }
+$vsElem = Get-VsAutomationElement -VsPid $vs.Id
+if ($vsElem) {
+    $windows = $vsElem.FindAll($TS::Descendants, $winCond)
+    foreach ($w in $windows) {
+        if ($w.Current.Name -eq 'Options') { $stillOpen = $true; break }
+    }
 }
 if ($stillOpen) {
     Write-Host "WARNING: Options dialog still open - clicking Cancel"
@@ -637,7 +406,7 @@ if ($stillOpen) {
 
 # Clean up DTE helper process
 if ($dteProc -and -not $dteProc.HasExited) {
-    $dteProc.WaitForExit(10000)
+    $null = $dteProc.WaitForExit(10000)
     if (-not $dteProc.HasExited) {
         Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue
     }

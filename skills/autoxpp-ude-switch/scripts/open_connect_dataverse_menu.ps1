@@ -188,7 +188,7 @@ while ((Get-Date) -lt $deadline) {
         -PassThru -WindowStyle Hidden
 
     # Wait for helper: it may exit quickly (non-blocking command) or block on modal
-    $dteProc.WaitForExit(15000)
+    $null = $dteProc.WaitForExit(15000)
 
     if ($dteProc.HasExited -and $dteProc.ExitCode -eq 0) {
         # Command executed and returned -- menu action triggered
