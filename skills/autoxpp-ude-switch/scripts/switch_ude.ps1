@@ -350,9 +350,20 @@ try {
     $xppLine = Join-Path $xppDir $ourName
 
     # 4. Determine the RuntimeSymLinks folder to own
+    # If prevRslFolder is set but the folder no longer exists on disk, clear it
+    # so we fall through to scan for a real folder. This handles the case where
+    # VS names folders as {orgName}{counter} (e.g. UDE0011) and the owned name
+    # (UDE001) was never actually created.
     $ownedRslFolder = $prevRslFolder
+    if (-not [string]::IsNullOrEmpty($ownedRslFolder)) {
+        $ownedRslPath = Join-Path $rslDir $ownedRslFolder
+        if (-not (Test-Path $ownedRslPath)) {
+            Write-Host "  Previously tracked RSL folder '$ownedRslFolder' no longer exists on disk - re-scanning"
+            $ownedRslFolder = ""
+        }
+    }
     if ([string]::IsNullOrEmpty($ownedRslFolder)) {
-        # First time: adopt the newest VS-created RSL folder, or the first new one
+        # Adopt the newest VS-created RSL folder, or scan for existing match
         if ($newRslFolders.Count -gt 0) {
             $ownedRslFolder = $newRslFolders[0]
         } else {
@@ -433,15 +444,19 @@ try {
         Write-UdeLog -LogFile $logFile -Step "cleanup-vs-json" -Status "OK" -Detail "deleted $srcLeaf"
     }
 
-    # 9. Delete VS-generated RuntimeSymLinks folders that aren't our owned one
-    foreach ($newRsl in $newRslFolders) {
-        if ($newRsl -ne $ownedRslFolder) {
-            $rslPath = Join-Path $rslDir $newRsl
-            if (Test-Path $rslPath) {
-                Remove-Item -Path $rslPath -Recurse -Force -ErrorAction SilentlyContinue
-                Write-Host "  Deleted duplicate RuntimeSymLinks folder: $newRsl"
-                Write-UdeLog -LogFile $logFile -Step "cleanup-rsl" -Status "OK" -Detail "deleted $newRsl"
-            }
+    # 9. Delete RuntimeSymLinks folders that aren't our owned one
+    # Clean up both newly created duplicates AND orphans from previous runs.
+    # VS creates {orgName}{counter} folders on each connection (e.g. UDE0011,
+    # UDE0012, UDE0013 for orgName=UDE001). Only keep our owned folder.
+    if ($ownedRslFolder -and (Test-Path $rslDir)) {
+        $rslOrphans = Get-ChildItem -Path $rslDir -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne $ownedRslFolder -and
+                           ($_.Name -eq $Name -or $_.Name -match "^${Name}\d+$" -or
+                            ($vsOrgName -and ($_.Name -eq $vsOrgName -or $_.Name -match "^${vsOrgName}\d+$"))) }
+        foreach ($orphan in $rslOrphans) {
+            Remove-Item -Path $orphan.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  Deleted orphaned RuntimeSymLinks folder: $($orphan.Name)"
+            Write-UdeLog -LogFile $logFile -Step "cleanup-rsl" -Status "OK" -Detail "deleted $($orphan.Name)"
         }
     }
 
@@ -535,6 +550,34 @@ try {
                 Start-Sleep -Seconds 10
             }
             Write-Host "  VS relaunched (menu ready=$selMenuFound) - retrying select config..."
+
+            # Re-run retarget: VS overwrites the XPP config on relaunch,
+            # undoing our RuntimePackagesDirectory/ModelStoreFolder changes.
+            # The owned RSL folder may also have changed if VS created a new one.
+            $postRestartRsl = ""
+            if ($ownedRslFolder) {
+                $postRestartRsl = Join-Path $rslDir $ownedRslFolder
+                # VS may have created a new RSL folder on relaunch -- adopt it if ours is gone
+                if (-not (Test-Path $postRestartRsl) -and (Test-Path $rslDir)) {
+                    $newCandidates = Get-ChildItem -Path $rslDir -Directory -ErrorAction SilentlyContinue |
+                        Where-Object { $_.Name -eq $Name -or $_.Name -match "^${Name}\d+$" -or
+                                       ($vsOrgName -and ($_.Name -eq $vsOrgName -or $_.Name -match "^${vsOrgName}\d+$")) } |
+                        Sort-Object LastWriteTime -Descending
+                    if ($newCandidates -and @($newCandidates).Count -gt 0) {
+                        $ownedRslFolder = @($newCandidates)[0].Name
+                        $postRestartRsl = Join-Path $rslDir $ownedRslFolder
+                        Write-Host "  Adopted new RSL folder after restart: $ownedRslFolder"
+                    }
+                }
+            }
+            Write-Host "  Re-applying retarget after VS restart..."
+            $rtOut2 = & "$PSScriptRoot\retarget_xpp_config.ps1" `
+                -XppJsonPath $xppLine `
+                -MetadataFolder $ude.customMetadataFolder `
+                -DefaultCompany $company `
+                -RuntimeSymLinkPath $postRestartRsl
+            $rtOut2 | ForEach-Object { Write-Host "    $_"; Write-UdeLog -LogFile $logFile -Step "retarget-post-restart" -Status "INFO" -Detail $_ }
+            Write-UdeLog -LogFile $logFile -Step "retarget-post-restart" -Status "OK" -Detail "re-applied after VS restart"
         }
     }
     if (-not $selOk) { throw "Failed to set current XPP config via VS UI (after restart retry)" }
