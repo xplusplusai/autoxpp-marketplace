@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Built for <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> by <a href="https://www.xplusplus.ai">XPLUSPLUS.AI</a>
+  Available for <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code</a> and <a href="https://openai.com/codex/">OpenAI Codex</a> · by <a href="https://www.xplusplus.ai">XPLUSPLUS.AI</a>
 </p>
 
 ---
@@ -171,6 +171,17 @@ Autonomous multi-phase execution can stall silently — a sub-agent exits, a pha
 ## Demo
 
 Watch the [full lifecycle demo](https://www.youtube.com/watch?v=EaxUN7lpuX0) — from requirement to tested code, unattended.
+
+---
+
+## Editions
+
+AutoXPP ships as a plugin of reusable skills for two agent hosts. Both editions share the same skill content and are backed by the AutoXPP MCP server — only the host-specific plugin packaging and invocation syntax differ (`/autoxpp-…` in Claude Code, `$autoxpp-…` in Codex).
+
+| Host | Plugin repo | Status |
+|------|-------------|--------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | [xplusplusai/autoxpp-marketplace](https://github.com/xplusplusai/autoxpp-marketplace) | Available |
+| [OpenAI Codex](https://openai.com/codex/) | autoxpp-for-codex | Coming soon |
 
 ---
 
