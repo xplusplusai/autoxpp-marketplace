@@ -83,6 +83,9 @@ $winCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTy
 $cbCond  = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::CheckBox)
 $menuItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::MenuItem)
 
+# Script-scope ref to search box ValuePattern -- used to clear search before OK/Cancel lookups
+$script:searchVP = $null
+
 # --- Close any stale Options dialog via UIA ---
 $windows = $vsElem.FindAll($TS::Descendants, $winCond)
 foreach ($w in $windows) {
@@ -226,6 +229,7 @@ if ($searchBox) {
     Write-Host "Using search box to filter to 'Power Platform' (ValuePattern)..."
     try {
         $vp = $searchBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+        $script:searchVP = $vp
 
         # Clear existing search first
         $vp.SetValue("")
@@ -312,6 +316,8 @@ $currentState = $togglePattern.Current.ToggleState
 
 if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     Write-Host "SKIP_DISCOVERY_ALREADY_CHECKED"
+    # Clear search text so WPF re-shows OK/Cancel buttons
+    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
     $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
@@ -330,6 +336,8 @@ Start-Sleep -Milliseconds 300
 
 $newState = $togglePattern.Current.ToggleState
 if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
+    # Clear search text so WPF re-shows OK/Cancel buttons
+    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
     $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
@@ -343,6 +351,8 @@ if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
 }
 
 # --- Click OK to save ---
+# Clear search text so WPF re-shows OK/Cancel buttons
+if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
 $okClicked = $false
 
 # Strategy A: Find OK button (Win32 Button with HWND) via InvokePattern
@@ -373,6 +383,8 @@ if (-not $okClicked) {
 
 if (-not $okClicked) {
     Write-Host "WARNING: Could not find OK button - attempting Cancel"
+    # Clear search text again in case prior clear didn't take effect
+    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
     $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
@@ -398,6 +410,7 @@ if ($vsElem) {
 }
 if ($stillOpen) {
     Write-Host "WARNING: Options dialog still open - clicking Cancel"
+    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
     $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
     if ($cancelBtn) {
         try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
