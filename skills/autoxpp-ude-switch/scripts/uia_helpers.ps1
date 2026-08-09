@@ -18,6 +18,7 @@ public class UdeSwitchUiaNative {
     [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
 
     public const int SW_SHOWMINIMIZED = 2;
+    public const int SW_MAXIMIZE = 3;
     public const int SW_RESTORE = 9;
 
     public static void ClickAt(int x, int y) {
@@ -36,6 +37,7 @@ public class UdeSwitchUiaNative {
     }
 
     public static void MinimizeWindow(IntPtr hWnd) { ShowWindow(hWnd, SW_SHOWMINIMIZED); }
+    public static void MaximizeWindow(IntPtr hWnd) { ShowWindow(hWnd, SW_MAXIMIZE); }
     public static void RestoreWindow(IntPtr hWnd)  { ShowWindow(hWnd, SW_RESTORE); }
 }
 "@ -ErrorAction SilentlyContinue
@@ -322,6 +324,13 @@ function Show-Vs {
     if ($p) {
         [UdeSwitchUiaNative]::RestoreWindow($p.MainWindowHandle) | Out-Null
         [UdeSwitchUiaNative]::ForceForeground($p.MainWindowHandle)
+    }
+}
+
+function Maximize-Vs {
+    $p = Get-VsProcess
+    if ($p) {
+        [UdeSwitchUiaNative]::MaximizeWindow($p.MainWindowHandle) | Out-Null
     }
 }
 

@@ -624,7 +624,7 @@ try {
     Update-UdeLastUsed -Name $Name -Version $ver
     Write-UdeLog -LogFile $logFile -Step "update-cfg" -Status "OK" -Detail "lastUsed + version=$ver"
 
-    Minimize-Vs
+    Maximize-Vs
 
     Write-Host ""
     Write-Host "========================================"
