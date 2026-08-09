@@ -30,8 +30,11 @@ public class UdeSkipDiscoveryMsg {
     public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
     public const uint WM_KEYDOWN = 0x0100;
     public const uint WM_KEYUP   = 0x0101;
+    public const uint WM_COMMAND = 0x0111;
     public const int  VK_RETURN  = 0x0D;
     public const int  VK_DOWN    = 0x28;
+    public const int  IDOK       = 1;
+    public const int  IDCANCEL   = 2;
 }
 "@ -ErrorAction SilentlyContinue
 
@@ -86,19 +89,14 @@ $menuItemCond = New-Object System.Windows.Automation.PropertyCondition($AE::Cont
 # Script-scope ref to search box ValuePattern -- used to clear search before OK/Cancel lookups
 $script:searchVP = $null
 
-# --- Close any stale Options dialog via UIA ---
+# --- Close any stale Options dialog via WM_COMMAND ---
 $windows = $vsElem.FindAll($TS::Descendants, $winCond)
 foreach ($w in $windows) {
     if ($w.Current.Name -eq 'Options') {
         Write-Host "Closing stale Options dialog..."
-        $cancelBtn = Find-ButtonByName -Parent $w -Name 'Cancel'
-        if ($cancelBtn) {
-            try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-        } else {
-            $okBtn = Find-ButtonByName -Parent $w -Name 'OK'
-            if ($okBtn) {
-                try { $okBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-            }
+        $h = $w.Current.NativeWindowHandle
+        if ($h -and $h -ne 0) {
+            [UdeSkipDiscoveryMsg]::SendMessage([IntPtr]$h, [UdeSkipDiscoveryMsg]::WM_COMMAND, [IntPtr][UdeSkipDiscoveryMsg]::IDCANCEL, [IntPtr]::Zero) | Out-Null
         }
         Start-Sleep -Milliseconds 1000
         break
@@ -316,11 +314,23 @@ $currentState = $togglePattern.Current.ToggleState
 
 if ($currentState -eq [System.Windows.Automation.ToggleState]::On) {
     Write-Host "SKIP_DISCOVERY_ALREADY_CHECKED"
-    # Clear search text so WPF re-shows OK/Cancel buttons
-    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
-    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
-    if ($cancelBtn) {
-        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    # Close dialog via WM_COMMAND IDCANCEL (reliable for #32770 dialogs, works headless)
+    $dlgHwnd = $optionsDlg.Current.NativeWindowHandle
+    if ($dlgHwnd -and $dlgHwnd -ne 0) {
+        $h = [IntPtr]$dlgHwnd
+        [UdeSkipDiscoveryMsg]::SendMessage($h, [UdeSkipDiscoveryMsg]::WM_COMMAND, [IntPtr][UdeSkipDiscoveryMsg]::IDCANCEL, [IntPtr]::Zero) | Out-Null
+        Start-Sleep -Milliseconds 500
+    }
+    # Verify
+    $vsElem = Get-VsAutomationElement -VsPid $vs.Id
+    if ($vsElem) {
+        $windows = $vsElem.FindAll($TS::Descendants, $winCond)
+        foreach ($w in $windows) {
+            if ($w.Current.Name -eq 'Options') {
+                Write-Host "  WARNING: Options dialog still open after WM_COMMAND IDCANCEL"
+                break
+            }
+        }
     }
     if ($dteProc -and -not $dteProc.HasExited) {
         $null = $dteProc.WaitForExit(5000)
@@ -336,11 +346,10 @@ Start-Sleep -Milliseconds 300
 
 $newState = $togglePattern.Current.ToggleState
 if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
-    # Clear search text so WPF re-shows OK/Cancel buttons
-    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
-    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
-    if ($cancelBtn) {
-        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
+    # Close dialog via WM_COMMAND IDCANCEL
+    $dlgHwnd = $optionsDlg.Current.NativeWindowHandle
+    if ($dlgHwnd -and $dlgHwnd -ne 0) {
+        [UdeSkipDiscoveryMsg]::SendMessage([IntPtr]$dlgHwnd, [UdeSkipDiscoveryMsg]::WM_COMMAND, [IntPtr][UdeSkipDiscoveryMsg]::IDCANCEL, [IntPtr]::Zero) | Out-Null
     }
     if ($dteProc -and -not $dteProc.HasExited) {
         $null = $dteProc.WaitForExit(5000)
@@ -350,50 +359,18 @@ if ($newState -ne [System.Windows.Automation.ToggleState]::On) {
     exit 1
 }
 
-# --- Click OK to save ---
-# Clear search text so WPF re-shows OK/Cancel buttons
-if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
-$okClicked = $false
-
-# Strategy A: Find OK button (Win32 Button with HWND) via InvokePattern
-$okBtn = Find-ButtonByName -Parent $optionsDlg -Name 'OK'
-if ($okBtn) {
-    Invoke-Button -Button $okBtn -VsHwnd $vs.MainWindowHandle | ForEach-Object { Write-Host "OK: $_" }
-    $okClicked = $true
-}
-
-# Strategy B: Find OK pane (direct child) and invoke inner button or use SendMessage
-if (-not $okClicked) {
-    $allChildren = $optionsDlg.FindAll($TS::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    foreach ($c in $allChildren) {
-        if ($c.Current.Name -eq 'OK') {
-            $hwnd = $c.Current.NativeWindowHandle
-            if ($hwnd -ne 0) {
-                # Send Enter to the OK button's HWND
-                $okHwnd = [IntPtr]$hwnd
-                [UdeSkipDiscoveryMsg]::SendMessage($okHwnd, [UdeSkipDiscoveryMsg]::WM_KEYDOWN, [IntPtr][UdeSkipDiscoveryMsg]::VK_RETURN, [IntPtr]::Zero) | Out-Null
-                [UdeSkipDiscoveryMsg]::SendMessage($okHwnd, [UdeSkipDiscoveryMsg]::WM_KEYUP, [IntPtr][UdeSkipDiscoveryMsg]::VK_RETURN, [IntPtr]::Zero) | Out-Null
-                $okClicked = $true
-                Write-Host "OK sent via SendMessage to HWND $okHwnd"
-            }
-            break
-        }
-    }
-}
-
-if (-not $okClicked) {
-    Write-Host "WARNING: Could not find OK button - attempting Cancel"
-    # Clear search text again in case prior clear didn't take effect
-    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
-    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
-    if ($cancelBtn) {
-        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-    }
+# --- Click OK to save via WM_COMMAND IDOK ---
+$dlgHwnd = $optionsDlg.Current.NativeWindowHandle
+if ($dlgHwnd -and $dlgHwnd -ne 0) {
+    $h = [IntPtr]$dlgHwnd
+    [UdeSkipDiscoveryMsg]::SendMessage($h, [UdeSkipDiscoveryMsg]::WM_COMMAND, [IntPtr][UdeSkipDiscoveryMsg]::IDOK, [IntPtr]::Zero) | Out-Null
+    Write-Host "OK sent via WM_COMMAND IDOK"
+} else {
     if ($dteProc -and -not $dteProc.HasExited) {
         $null = $dteProc.WaitForExit(5000)
         if (-not $dteProc.HasExited) { Stop-Process -Id $dteProc.Id -Force -ErrorAction SilentlyContinue }
     }
-    Write-Host "SKIP_DISCOVERY_FAIL Could not click OK to save"
+    Write-Host "SKIP_DISCOVERY_FAIL dialog has no HWND for OK"
     exit 1
 }
 
@@ -409,12 +386,8 @@ if ($vsElem) {
     }
 }
 if ($stillOpen) {
-    Write-Host "WARNING: Options dialog still open - clicking Cancel"
-    if ($script:searchVP) { try { $script:searchVP.SetValue(""); Start-Sleep -Milliseconds 500 } catch {} }
-    $cancelBtn = Find-ButtonByName -Parent $optionsDlg -Name 'Cancel'
-    if ($cancelBtn) {
-        try { $cancelBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch {}
-    }
+    Write-Host "WARNING: Options dialog still open after OK - sending IDCANCEL"
+    [UdeSkipDiscoveryMsg]::SendMessage([IntPtr]$dlgHwnd, [UdeSkipDiscoveryMsg]::WM_COMMAND, [IntPtr][UdeSkipDiscoveryMsg]::IDCANCEL, [IntPtr]::Zero) | Out-Null
 }
 
 # Clean up DTE helper process
