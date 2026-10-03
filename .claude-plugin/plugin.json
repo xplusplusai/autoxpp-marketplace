@@ -1,5 +1,6 @@
 {
   "name": "autoxpp",
+  "displayName": "AutoXPP",
   "version": "1.5.12",
   "description": "Autonomous D365 F&O development engine — X++ coding, building, testing, browser automation",
   "author": {
