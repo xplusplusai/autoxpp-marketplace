@@ -8,6 +8,7 @@
     "url": "https://xplusplus.ai"
   },
   "homepage": "https://xplusplus.ai",
+  "privacyPolicyUrl": "https://xplusplus.ai/privacy-policy.html",
   "repository": "https://github.com/xplusplusai/autoxpp-marketplace",
   "license": "proprietary",
   "keywords": ["D365", "Dynamics 365", "Finance Operations", "F&O", "X++", "ERP"],
