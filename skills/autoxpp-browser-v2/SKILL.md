@@ -172,6 +172,11 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
     HTTP 204 = success. The CE plugin chain fires identically to a UI button click.
     This pattern works for any Dataverse action — substitute the action name, parameters, and entity binding.
 
+15. **BACKGROUND RUNS — NEVER EDIT A RUNNING SCRIPT, ALWAYS KILL ITS CHILDREN** (learned 2026-10-17, CaseFusionPro harness):
+    - Bash reads a script incrementally while it runs. Editing a `.sh` file that a background run is executing makes the run abort with a syntax error (or execute a half-old, half-new line). Wait for the run to finish, or copy the file and edit the copy.
+    - Stopping a background Bash task does **not** kill the test script it started. The orphan keeps clicking into the browser session — into whatever page you have since navigated to. Before touching the browser after a stopped run: `pkill -f "test-|run-all"` (match your script names) and check `pgrep -af playwright-cli`.
+    - Foreground `sleep` longer than a few seconds is blocked in Claude Code. Wait for a long run with the **Monitor** tool on `tail -F run.log | grep --line-buffered "PASS\|FAIL\|RUN COMPLETE"` (30-minute cap — re-arm it when it expires), never with a sleep loop. Pair with rule 11's orphan guards inside the script itself.
+
 ---
 
 ## Section 1: Environment Check
@@ -563,6 +568,26 @@ After any action (save, submit, process, delete), check the snapshot for:
 - Success/error/warning messages (infolog, toast, banner)
 - Capture messages as evidence via screenshot
 - Check site reference for where the app displays status messages
+- **Exclude the search box's own value before asserting text.** After typing a name into a search/filter field, that name is always "on screen" through the textbox value (`textbox "Search…": REG1017 Customer`, or a child `text:` line while the box is active). Strip the search textbox subtree from the snapshot before checking that a record is present or absent, otherwise every "deleted row is gone" check passes vacuously. (2026-10-16, CaseFusionPro: `visible_lines()` in the harness template.)
+
+### Navigation Verification and Retry
+Clicks on custom nav items (sidebars, tiles, tabs) are occasionally lost with no error — the app simply stays where it was, and the next 20 steps run on the wrong screen. Treat every navigation as unverified until the snapshot shows a **marker** unique to the target screen (an accessible heading, a label only that screen has). On a miss, retry with escalating variants, all verified 2026-10-16:
+```
+1. plain pointer click               → wait 2s → marker?
+2. mousemove, pause 1s, mousedown, pause 0.3s, mouseup → wait 4s → marker?
+3. press Escape (closes a stray dropdown), click again
+4. wait 8-10s for a busy app to settle, click again
+```
+Give up after ~5 attempts and FAIL the step — never continue on an unverified screen. Keep the last reached screen + marker in variables and re-check them before any action that assumes a screen (search, open popup): apps occasionally jump screens on their own mid-sequence.
+
+### A Stray Select-All Poisons Pointer Clicks
+`press Control+a` sent while no textbox has focus selects the **whole page**. From then on every `mousedown` on highlighted text starts a text drag instead of a click, so nav and button clicks are silently lost (screenshots show a page-wide blue highlight). Rules: only send `Control+a` after the snapshot shows the target textbox `[active]`; before every navigation or search, click a blank spot (e.g. an empty header band) to drop any selection; include that "neutral click" in your `nav`/`search` helpers rather than remembering it per call. (2026-10-16, CaseFusionPro.)
+
+### Ref Clicks Inside an App Iframe Drift After Re-renders
+`playwright-cli click <ref>` on elements inside an app iframe (Power Apps player, embedded SPAs) sometimes hits a **different** element than the snapshot showed — refs are re-assigned when the app re-renders between `snapshot` and `click`. Observed: a "+ New Case" ref landed on a sidebar item, a "Home" ref opened "SLA". Use pointer coordinates (`resize 1920 1080` first) for everything inside the app frame; keep ref clicks for the stable host chrome (banners, host dialogs). Refs remain fine for pages that don't re-render between snapshot and click. (2026-10-17, CaseFusionPro.)
+
+### Buttons Shared With the Host Chrome
+Never ref-click a button by its name alone. The hosting shell often owns a button with the same name as one inside the app (Power Apps host bar "Settings" gear vs the app's Settings tile). Clicking the host's one can navigate the whole tab away and detach the player from the daemon ("Session closed", blank tab — recover with `-s=<session> close` + reopen). Pick the app's button by its position relative to a neighbouring app control, or by coordinates. (2026-10-16, CaseFusionPro.)
 
 ---
 
@@ -578,6 +603,7 @@ playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{nam
 
 `{WorkspaceRoot}` = the repo workspace root (e.g., `C:\MyD365Project`).
 **NEVER** save screenshots to the current working directory or `.playwright-cli/`.
+Exception: a project's regression harness (below) may declare its own evidence folder in the project `CLAUDE.md`; follow the project's convention when it exists, and make sure that folder is gitignored if it also receives `playwright-cli` snapshots.
 Organize by feature subfolder: `screenshots/{feature}/{step}-{date}.png`
 Example: `screenshots/{feature}/fullcycle-01-records-created.png`
 
@@ -618,6 +644,28 @@ Present results in structured format:
 | TC | Step | Expected | Actual | Status | Evidence |
 |:---|:-----|:---------|:-------|:-------|:---------|
 | TC1 | Process record | Status = Processed | Status = Processed | PASS | TC1-after.png |
+
+### Scripted Regression Harness (build one when a test plan passes ~20 UI cases)
+
+Driving a test plan one `playwright-cli` command at a time costs a model turn per click (snapshot output included) — ~1,000 tool calls and on the order of a million tokens for a 130-case plan. The same plan as Bash scripts runs unattended for the price of starting it and reading one results file; tokens are then spent only on failures. **Build the harness in the project, not in this skill:** coordinates, markers and test values are app-specific; only the shape is reusable. Template: `reference/harness-template.sh` (generic `lib.sh` to copy into `tests/regression/`). Worked example: CaseFusionPro `tests/regression/` (https://github.com/tmpspk/CaseFusionPro) — 129 cases, 14 screens, results + plan updater.
+
+Shape (all pieces live in `{WorkspaceRoot}/tests/regression/`):
+
+| File | Role |
+|:-----|:-----|
+| `lib.sh` | Shared helpers, sourced by every test: session + `timeout 40` wrapper, pointer click `pc x y`, `ty`/`pr` keystrokes, `snap`/`shot` evidence, `expect_text`/`expect_absent` assertions on the snapshot, self-verifying `nav` with marker + retry (Section 4), `neutral` click, `record`/`check` result rows, `boot` (open player, dismiss stale-version banner) |
+| `screens.conf` | Per-screen data: coordinates of popup inputs / row icons / row-select column, screen markers, test values. Layout changes are edited here, never in tests |
+| `test-<area>.sh` | One script per screen or flow, written as `nav`, `pc`, `ty`, `check` calls. Each creates its own test rows (tagged `REG<mmdd> <hhmm>`) and deletes them |
+| `run-all.sh` | Runs every test under one `RUN_ID`, appends to `results/<RUN_ID>.md` |
+| `update-plan.py` | Copies the latest status per TC from the results file into the plan's matrix (`Doc/test/<plan>.md`) |
+| `discover.sh` | Screenshots each popup once so coordinates can be read off at 1920×1080 |
+
+Rules that only became obvious after a few hundred scripted clicks:
+- Wrap **every** `playwright-cli` call in `timeout 40`; one hung command otherwise wedges the whole run.
+- Black-box only: pointer clicks, keystrokes, accessibility snapshots, screenshots. No DB queries, no Studio/designer — the harness must prove what a user sees.
+- A `RUN_ID` env var selects the results file so a partial rerun (one screen) appends to the same run; the plan updater takes the **last** status per TC.
+- When a layout change moves an icon under a hardcoded click (a widened column put a trash icon at the row-select x), the failure looks like an app bug. Parameterise click columns per screen (`ROW_X`) and re-discover before trusting coordinates.
+- Rule 15 (background runs) applies: never edit a script mid-run, `pkill` children before touching the browser, Monitor instead of sleep.
 
 ---
 
