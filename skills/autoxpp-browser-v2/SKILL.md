@@ -1,10 +1,18 @@
 ---
 name: autoxpp-browser-v2
 description: >-
-  Generic browser automation wrapper over playwright-cli. Adds auth management,
-  self-learning site patterns, cross-skill integration, and evidence capture on top
-  of the built-in playwright-cli skill. Site-specific knowledge lives in reference/
-  files.
+  D365 Finance & Operations browser automation, built on playwright-cli. Use this
+  skill - not raw playwright-cli - whenever a task opens, navigates, tests, or
+  captures evidence in a D365 F&O / UDE / Dataverse / Power Apps canvas app web
+  UI (any *.operations.dynamics.com, *.crm.dynamics.com, or apps.powerapps.com
+  URL, a canvas app running locally via Vite, or any mention of a D365 form, menu
+  path, workspace, or sales/purchase/warehouse screen). Adds F&O-aware
+  authentication (Chrome-profile reuse that survives OAuth blocks and
+  deployments), form-URL (mi=) and menu-tree navigation, canvas-app iframe and
+  control handling, async-render handling,
+  self-learning site patterns, cross-skill integration, and structured evidence
+  capture on top of the built-in playwright-cli skill. Site-specific knowledge
+  lives in reference/ files.
 allowed-tools: Bash(playwright-cli:*), Read, Write(./screenshots/**, ./reference/**), Edit(./reference/**), Glob, Grep
 ---
 
