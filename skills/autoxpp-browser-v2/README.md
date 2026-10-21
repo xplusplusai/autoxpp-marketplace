@@ -1,12 +1,18 @@
 # AutoXPP Browser v2
 
-Browser automation for D365 Finance & Operations via Playwright CLI — persistent authentication, self-learning site patterns, and structured evidence capture.
+Browser automation for D365 Finance & Operations, Dataverse, and Power Apps canvas apps via Playwright CLI — persistent authentication, self-learning site patterns, and structured evidence capture.
 
 ## Why This Skill Matters
 
 Browser automation is the other half of the autonomous development loop. After the build agent deploys code, the tester agent uses this skill to open D365 in a real browser, execute test cases against the live UI, and capture screenshot evidence of every step. When a test fails, the failure report feeds back to the coding agent — which fixes the code, triggers a rebuild, and retests automatically. No human in the loop. The developer can step away from the computer while agents run the full code → build → test → fix cycle for hours unattended.
 
 D365 F&O is a browser-based ERP with deeply nested forms, multi-step workflows, async loading, and session-dependent state. Standard browser automation breaks constantly against it — Google OAuth blocks Playwright's default browser, sessions expire mid-test, and form elements load asynchronously. This skill solves all of that so the tester agent can focus on test execution, not browser mechanics.
+
+## Why Not Drive Playwright Directly?
+
+An AI agent that calls `playwright-cli` on its own against D365 F&O usually stalls within a few steps. The login redirect lands on an OAuth block page. The first navigation targets a form URL that renders as an empty shell because the single-page app is still loading. Lookups, grids, and FastTabs appear asynchronously, so clicks land before the control exists. A deployment in the middle of a test silently invalidates the session. The agent then burns tokens and minutes retrying blind.
+
+This skill is the F&O-tuned layer on top of Playwright. It restores authentication before any navigation, knows the `?mi=` form-URL scheme and menu-tree navigation, waits for F&O's async rendering, records the quirks of each form it meets, and captures evidence as it goes. The same layer covers Dataverse model-driven apps and Power Apps canvas apps (published or local-play), where raw Playwright fails in different ways: controls live inside an iframe, refs drift after every re-render, and glass popups never pass the actionability check. In practice, an agent that is fumbling with raw Playwright on a D365 page gets unstuck as soon as it is redirected to this skill. If you see that happen, say "use autoxpp-browser-v2" and let it take over.
 
 ## How It Fits in the Testing Strategy
 
