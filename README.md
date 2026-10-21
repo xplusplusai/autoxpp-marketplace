@@ -95,7 +95,7 @@ The watchdog monitors the entire lifecycle and alerts on stalled transitions. A 
 |:------|:-----|:--------|
 | **autoxpp-dev-v2** | Pro | X++ coding agent. Reads work items, loads D365 reference patterns, writes metadata artifacts (classes, tables, forms, extensions, security). Follows dependency order and logs every design decision. |
 | **autoxpp-build** | Pro | Drives Visual Studio 2022's full build-deploy cycle via PowerShell UI Automation. Zero human clicks — compile, sync database, deploy to online environment, all automated. |
-| **autoxpp-browser-v2** | Free | Browser automation via Playwright CLI. Self-learning site patterns, persistent auth state, evidence capture. Handles D365's complex SPA forms and multi-step business processes. |
+| **autoxpp-browser-v2** | Free | D365 F&O browser automation via Playwright CLI. Use it instead of raw Playwright, which stalls on D365's OAuth login, async-loading SPA forms, and session resets after deploys. F&O-aware auth, form-URL and menu navigation, Dataverse and canvas app handling, self-learning site patterns, evidence capture. |
 
 ### Analysis & Quality Gates
 
