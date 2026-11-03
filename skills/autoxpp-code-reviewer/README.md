@@ -65,16 +65,16 @@ Every finding requires four elements: concrete trigger, code location, consequen
 
 ## Knowledge Stack
 
-The skill loads reference files that encode the rules it validates against:
+The skill loads 10+ curated reference files covering coding rules, naming conventions, anti-patterns, operational correctness, and metadata validation:
 
 | Reference | What it provides |
 |:----------|:----------------|
-| `guard-rails.md` | Section A+B rule definitions (P1 source of truth) |
-| `model-structure.md` | Naming conventions, descriptor format |
-| `anti-patterns.md` | Anti-pattern catalog |
-| `xpp-correctness.md` | Deep X++ operational patterns (P2 Layer B) |
-| `xgen-metadata-rules.md` | XML metadata patterns -- naming, field types, XML structure, cross-file consistency (P1/P2/P3) |
-| `tables.md`, `forms.md`, `batch.md`, `security.md` | Artifact-type-specific patterns (loaded selectively) |
+| `guard-rails.md` | Coding rules and pre-build validation checks |
+| `model-structure.md` | Project structure and naming conventions |
+| `anti-patterns.md` | Known anti-patterns from real D365 projects |
+| `xpp-correctness.md` | Deep X++ operational correctness patterns |
+| `xgen-metadata-rules.md` | XML metadata validation rules |
+| `tables.md`, `forms.md`, `batch.md`, `security.md` | Artifact-type-specific best practices |
 
 ## Phased Rollout
 
