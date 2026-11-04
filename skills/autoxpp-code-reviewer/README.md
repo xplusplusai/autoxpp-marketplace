@@ -50,8 +50,11 @@ Verifies artifacts wire up correctly across the module.
 
 | Verdict | Condition | Effect |
 |:--------|:----------|:-------|
-| **PASS** | No critical findings, 3 or fewer warnings | Code proceeds to build |
-| **FAIL** | Any critical finding, or more than 3 warnings | Fix-loop: findings written to feedback.txt, dev-v2 re-invoked |
+| **PASS** | No active critical findings, 3 or fewer active warnings | Code proceeds to build |
+| **CONDITIONAL PASS** | All criticals resolved or accepted-risk, remaining warnings accepted with justification | Code proceeds to build; accepted-risk findings documented |
+| **FAIL** | Unresolved critical findings, or more than 3 unresolved warnings | Fix-loop: findings written to feedback.txt, dev-v2 re-invoked |
+
+Findings are classified by origin (`new`, `modified`, `pre-existing`). Pre-existing findings are capped at advisory severity and excluded from verdict thresholds. After an optional defense/adjudication step, findings may be marked `accepted` (intentional tradeoff, documented but excluded from verdict) or `upheld` (stands as-is).
 
 ## Evidence Discipline
 
