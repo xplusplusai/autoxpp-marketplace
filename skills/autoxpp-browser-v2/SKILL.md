@@ -603,7 +603,9 @@ Never ref-click a button by its name alone. The hosting shell often owns a butto
 
 ### Screenshot Default Location
 
-All screenshots MUST be saved to `{WorkspaceRoot}/screenshots/`:
+**When invoked by `autoxpp-tester`:** The tester owns the evidence folder structure and passes the exact screenshot path. Save to the path the tester specifies — do NOT override with a different convention. The tester uses structured evidence folders: `{WorkspaceRoot}/evidence/TC-{id}/run-{n}/TC-{id}-{step}.png` (see `autoxpp-tester/SKILL.md` → "Evidence Capture").
+
+**When invoked standalone (not by tester):** Save screenshots to `{WorkspaceRoot}/screenshots/`:
 ```bash
 mkdir -p "{WorkspaceRoot}/screenshots/{feature}"
 playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{name}.png"
@@ -612,20 +614,20 @@ playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{nam
 `{WorkspaceRoot}` = the repo workspace root (e.g., `C:\MyD365Project`).
 **NEVER** save screenshots to the current working directory or `.playwright-cli/`.
 Exception: a project's regression harness (below) may declare its own evidence folder in the project `CLAUDE.md`; follow the project's convention when it exists, and make sure that folder is gitignored if it also receives `playwright-cli` snapshots.
-Organize by feature subfolder: `screenshots/{feature}/{step}-{date}.png`
-Example: `screenshots/{feature}/fullcycle-01-records-created.png`
 
-### Per Test Case
+### Per Test Case (tester-driven)
+
+The tester passes the exact path for each step screenshot:
 
 ```bash
-# Before test
-playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{TC-id}-before.png"
+# Step 1
+playwright-cli screenshot --filename="{WorkspaceRoot}/evidence/TC-1/run-1/TC-1-1.png"
 
-# ... perform test steps, screenshot at key points ...
-playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{TC-id}-step1-{description}.png"
+# Step 2
+playwright-cli screenshot --filename="{WorkspaceRoot}/evidence/TC-1/run-1/TC-1-2.png"
 
-# After test
-playwright-cli screenshot --filename="{WorkspaceRoot}/screenshots/{feature}/{TC-id}-after.png"
+# Step 3
+playwright-cli screenshot --filename="{WorkspaceRoot}/evidence/TC-1/run-1/TC-1-3.png"
 ```
 
 ### For Complex Flows (video)
