@@ -603,7 +603,7 @@ Never ref-click a button by its name alone. The hosting shell often owns a butto
 
 ### Screenshot Default Location
 
-**When invoked by `autoxpp-tester`:** The tester owns the evidence folder structure and passes the exact screenshot path. Save to the path the tester specifies — do NOT override with a different convention. The tester uses structured evidence folders: `{WorkspaceRoot}/evidence/TC-{id}/run-{n}/TC-{id}-{step}.png` (see `autoxpp-tester/SKILL.md` → "Evidence Capture").
+**When invoked by `autoxpp-tester`:** The tester owns the evidence folder structure and passes the exact screenshot path. Save to the path the tester specifies — do NOT override with a different convention. The tester uses structured evidence folders: `{WorkspaceRoot}/evidence/TC-{id}/run-{n}/TC-{id}-{step}.png` (see `autoxpp-tester/SKILL.md` → "Evidence Capture"). **Resolution requirement:** The viewport MUST be set to at least 1920x1080 (`playwright-cli resize 1920 1080`) before capturing any evidence screenshot. The tester validates resolution post-run (EV-6), but the browser skill should ensure it from the start — rule 13 (MAXIMIZE VIEWPORT ON LAUNCH) applies doubly here.
 
 **When invoked standalone (not by tester):** Save screenshots to `{WorkspaceRoot}/screenshots/`:
 ```bash
