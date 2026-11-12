@@ -56,7 +56,7 @@ if ($ManualConfirm) {
     $ver = if ($mude.PSObject.Properties.Name -contains 'lastKnownVersion') { $mude.lastKnownVersion } else { "" }
     Update-UdeLastUsed -Name $Name -Version $ver
     Write-Host ""
-    Write-Host "UDE_MANUAL_CONFIRM_OK name=$Name activeEnv=$Name lastUsed=$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')"
+    Write-Host "UDE_MANUAL_CONFIRM_OK name=$Name activeEnv=$Name lastUsed=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
     exit 0
 }
 
