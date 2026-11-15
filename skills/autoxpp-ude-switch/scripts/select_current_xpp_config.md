@@ -1,17 +1,17 @@
-# select_current_xpp_config.ps1 - switch the "Current" XPP config via VS UI
+# select_current_xpp_config.md - switch the "Current" XPP config via VS UI
 #
 # Opens Extensions > Dynamics 365 > Configure Metadata... dialog,
 # selects the target config row by name, checks its "Current" checkbox,
 # clicks Save, and closes the dialog.
 #
-# Usage: select_current_xpp_config.ps1 -ConfigName <name> [-TimeoutSeconds 30]
+# Usage: select_current_xpp_config.md -ConfigName <name> [-TimeoutSeconds 30]
 #
 # Emits:
 #   XPP_CONFIG_SELECTED name=<name>
 #   XPP_CONFIG_ALREADY_CURRENT name=<name>
 #   XPP_CONFIG_ERROR <reason>
 #
-# Dot-sources uia_helpers.ps1 for Dismiss-D365UpdateDialog.
+# Dot-sources uia_helpers.md for Dismiss-D365UpdateDialog.
 
 param(
     [Parameter(Mandatory=$true)][string]$ConfigName,
@@ -25,7 +25,7 @@ Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
 
 # Dot-source shared UIA helpers for Dismiss-D365UpdateDialog
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 # --- Main logic ---
 

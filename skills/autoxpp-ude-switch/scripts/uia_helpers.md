@@ -1,4 +1,4 @@
-# uia_helpers.ps1 - shared UIA primitives for the UDE switch skill.
+# uia_helpers.md - shared UIA primitives for the UDE switch skill.
 # Dot-sourced by each dialog handler.
 
 Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue

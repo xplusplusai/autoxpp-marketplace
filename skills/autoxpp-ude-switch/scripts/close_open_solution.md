@@ -1,4 +1,4 @@
-# close_open_solution.ps1 - close any open solution before switching UDE.
+# close_open_solution.md - close any open solution before switching UDE.
 # Uses File -> Close Solution. If no solution is open, the menu item is grayed out
 # and invoke is a no-op; we detect that and succeed silently.
 #
@@ -7,7 +7,7 @@
 #   SOLUTION_NONE
 #   SOLUTION_CLOSE_ERROR <reason>
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Host "SOLUTION_CLOSE_ERROR VS not running"; exit 1 }

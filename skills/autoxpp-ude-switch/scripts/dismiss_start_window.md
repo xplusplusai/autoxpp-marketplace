@@ -1,4 +1,4 @@
-# dismiss_start_window.ps1 - get a freshly-launched VS to a CLEAN main IDE so later
+# dismiss_start_window.md - get a freshly-launched VS to a CLEAN main IDE so later
 # UIA/menu steps work. A fresh VS shows the "Get Started" Start Window (no usable
 # menu bar) and may pop undocumented modal dialogs (e.g. "Please install Modeling
 # SDK"). If we don't clear these, SendKeys lands in the "Open recent" search box.
@@ -12,12 +12,12 @@
 # NOT by "a MenuBar element exists" - the VS shell exposes an empty MenuBar even on
 # the Start Window, which previously caused a false "already at IDE" result.
 #
-# Usage: dismiss_start_window.ps1 [-TimeoutSeconds 90]
+# Usage: dismiss_start_window.md [-TimeoutSeconds 90]
 # Emits: START_WINDOW_ALREADY_IDE | START_WINDOW_HANDLED | START_WINDOW_TIMEOUT
 
 param([int]$TimeoutSeconds = 90)
 
-. "$PSScriptRoot\uia_helpers.ps1"   # Dismiss-UnexpectedDialog, Test-VsStartWindow, Get-Vs*
+. "$PSScriptRoot\uia_helpers.md"   # Dismiss-UnexpectedDialog, Test-VsStartWindow, Get-Vs*
 
 $AE  = [System.Windows.Automation.AutomationElement]
 $TS  = [System.Windows.Automation.TreeScope]

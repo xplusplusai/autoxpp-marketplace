@@ -1,13 +1,13 @@
-# switch_ude.ps1 - main orchestrator for UDE switching.
+# switch_ude.md - main orchestrator for UDE switching.
 #
 # Usage:
-#   switch_ude.ps1 -Name <udeName>                 # switch to named UDE
-#   switch_ude.ps1 -Name <udeName> -NoDownload     # warn + skip download if version not cached
-#   switch_ude.ps1 -Name <udeName> -DownloadPolicy always|ask|skip|skip-if-cached
-#   switch_ude.ps1 -Name <udeName> -ManualConfirm  # user switched manually; just update lastUsed/activeEnv
-#   switch_ude.ps1 -Current                        # print current active UDE
-#   switch_ude.ps1 -List                           # list configured UDEs
-#   switch_ude.ps1 -Add                            # interactive add flow
+#   switch_ude.md -Name <udeName>                 # switch to named UDE
+#   switch_ude.md -Name <udeName> -NoDownload     # warn + skip download if version not cached
+#   switch_ude.md -Name <udeName> -DownloadPolicy always|ask|skip|skip-if-cached
+#   switch_ude.md -Name <udeName> -ManualConfirm  # user switched manually; just update lastUsed/activeEnv
+#   switch_ude.md -Current                        # print current active UDE
+#   switch_ude.md -List                           # list configured UDEs
+#   switch_ude.md -Add                            # interactive add flow
 #
 # Exit codes:
 #   0 - success
@@ -29,23 +29,23 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-. "$PSScriptRoot\config_helpers.ps1"
-. "$PSScriptRoot\uia_helpers.ps1"   # Show-Vs / Bring-SelfToFront (Minimize-Vs alias) are called directly below
+. "$PSScriptRoot\config_helpers.md"
+. "$PSScriptRoot\uia_helpers.md"   # Show-Vs / Bring-SelfToFront (Minimize-Vs alias) are called directly below
 
 # --- Mode dispatch ---
-if ($List)    { & "$PSScriptRoot\list_udes.ps1"; exit $LASTEXITCODE }
-if ($Current) { & "$PSScriptRoot\show_current_ude.ps1"; exit $LASTEXITCODE }
-if ($Add)     { & "$PSScriptRoot\add_ude.ps1"; exit $LASTEXITCODE }
+if ($List)    { & "$PSScriptRoot\list_udes.md"; exit $LASTEXITCODE }
+if ($Current) { & "$PSScriptRoot\show_current_ude.md"; exit $LASTEXITCODE }
+if ($Add)     { & "$PSScriptRoot\add_ude.md"; exit $LASTEXITCODE }
 
 if ($ManualConfirm) {
     # Manual confirmation mode: user completed the switch outside the skill.
     # Just update lastUsed / activeEnv in ude-configs.json -- no VS interaction.
     if (-not $Name) {
         Write-Host "ERROR: -ManualConfirm requires -Name <udeName>."
-        Write-Host "       Usage: switch_ude.ps1 -Name <udeName> -ManualConfirm"
+        Write-Host "       Usage: switch_ude.md -Name <udeName> -ManualConfirm"
         exit 3
     }
-    . "$PSScriptRoot\config_helpers.ps1"
+    . "$PSScriptRoot\config_helpers.md"
     $mcfg = Load-UdeConfigs
     $mude = $mcfg.udeConfigs | Where-Object { $_.name -eq $Name }
     if (-not $mude) {
@@ -62,7 +62,7 @@ if ($ManualConfirm) {
 
 if (-not $Name) {
     Write-Host "ERROR: -Name is required (or use -List, -Current, -Add)."
-    Write-Host "       Usage: switch_ude.ps1 -Name <udeName>"
+    Write-Host "       Usage: switch_ude.md -Name <udeName>"
     exit 3
 }
 
@@ -95,7 +95,7 @@ try {
 
     # Snapshot XPPConfig
     $baselineFile = Join-Path (Split-Path -Parent $logFile) "xpp-baseline-$Name.txt"
-    & "$PSScriptRoot\snapshot_xppconfig.ps1" | Set-Content -Path $baselineFile -Encoding UTF8
+    & "$PSScriptRoot\snapshot_xppconfig.md" | Set-Content -Path $baselineFile -Encoding UTF8
     Write-UdeLog -LogFile $logFile -Step "snapshot" -Status "OK" -Detail "baseline=$baselineFile"
 
     # --- Phase B: VS interaction ---
@@ -152,7 +152,7 @@ try {
     $vsPath = if ($ude.ContainsKey('vsPath')) { $ude.vsPath } else { "" }
     $launchTimeout = if ($ude.timeouts) { [int]$ude.timeouts.vsRestartSeconds } else { 120 }
 
-    $launchResult = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
+    $launchResult = & "$PSScriptRoot\launch_vs.md" -VsPath $vsPath -TimeoutSeconds $launchTimeout
     Write-UdeLog -LogFile $logFile -Step "launch-vs" -Status "OK" -Detail "$launchResult"
     if ($LASTEXITCODE -ne 0) { throw "Failed to launch VS" }
 
@@ -163,7 +163,7 @@ try {
 
     # Get a freshly-launched VS past its Start Window / startup dialogs so the menu
     # bar exists for the steps below (P-4). No-op if VS is already at the main IDE.
-    $swOut = & "$PSScriptRoot\dismiss_start_window.ps1" -TimeoutSeconds 60
+    $swOut = & "$PSScriptRoot\dismiss_start_window.md" -TimeoutSeconds 60
     $swOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "start-window" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "VS Start Window could not be dismissed (no menu bar available)" }
 
@@ -209,35 +209,35 @@ try {
     # Ensure "Skip Discovery" is ON - required for the "Enter environment instance url"
     # popup to appear during connect (Tools > Options > Power Platform Tools > General).
     Write-Host "Showing VS to verify 'Skip Discovery' option..."
-    $sdOut = & "$PSScriptRoot\ensure_skip_discovery.ps1" -TimeoutSeconds 30
+    $sdOut = & "$PSScriptRoot\ensure_skip_discovery.md" -TimeoutSeconds 30
     $sdOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "skip-discovery" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Failed to ensure 'Skip Discovery' is enabled" }
 
     # Close any open solution (Show VS briefly for menu nav)
     Write-Host "Showing VS to close open solution..."
-    & "$PSScriptRoot\close_open_solution.ps1" | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "close-sln" -Status "INFO" -Detail $_ }
+    & "$PSScriptRoot\close_open_solution.md" | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "close-sln" -Status "INFO" -Detail $_ }
     Start-Sleep -Seconds 1
 
     # Tools -> Connect to online Dataverse
     Write-Host "Showing VS to open Connect to online Dataverse..."
-    $menuOut = & "$PSScriptRoot\open_connect_dataverse_menu.ps1"
+    $menuOut = & "$PSScriptRoot\open_connect_dataverse_menu.md"
     $menuOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "menu" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Failed to open Connect to online Dataverse menu" }
 
     # Reconnect dialog (click No if shown)
     Write-Host "Handling Reconnect dialog..."
-    & "$PSScriptRoot\handle_reconnect_dialog.ps1" -TimeoutSeconds 10 |
+    & "$PSScriptRoot\handle_reconnect_dialog.md" -TimeoutSeconds 10 |
         ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "reconnect-dlg" -Status "INFO" -Detail $_ }
 
     # Login dialog (click Login)
     Write-Host "Handling Login dialog..."
-    $loginOut = & "$PSScriptRoot\handle_login_dialog.ps1" -TimeoutSeconds 20
+    $loginOut = & "$PSScriptRoot\handle_login_dialog.md" -TimeoutSeconds 20
     $loginOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "login-dlg" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Login dialog handling failed" }
 
     # URL popup (type URL + OK)
     Write-Host "Handling URL popup..."
-    $urlOut = & "$PSScriptRoot\handle_url_popup.ps1" -Url $ude.dataverseUrl -TimeoutSeconds 30
+    $urlOut = & "$PSScriptRoot\handle_url_popup.md" -Url $ude.dataverseUrl -TimeoutSeconds 30
     $urlOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "url-popup" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "URL popup handling failed" }
 
@@ -247,7 +247,7 @@ try {
     # Wait for validation + loading
     $validTimeout = if ($ude.timeouts) { [int]$ude.timeouts.dataverseConnectSeconds } else { 300 }
     Write-Host "Waiting for Dataverse validation + workflow loading (up to ${validTimeout}s)..."
-    $vOut = & "$PSScriptRoot\wait_for_validation.ps1" -TimeoutSeconds $validTimeout
+    $vOut = & "$PSScriptRoot\wait_for_validation.md" -TimeoutSeconds $validTimeout
     $vOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "validate" -Status "INFO" -Detail $_ }
 
     if ($LASTEXITCODE -ne 0) { throw "Validation timed out - Dataverse not responding" }
@@ -257,7 +257,7 @@ try {
     Start-Sleep -Seconds 1
     $solName = if ($ude.ContainsKey('solutionName')) { $ude.solutionName } else { "Default" }
     Write-Host "Selecting solution '$solName'..."
-    $ssOut = & "$PSScriptRoot\handle_select_solution.ps1" -SolutionName $solName -TimeoutSeconds 30
+    $ssOut = & "$PSScriptRoot\handle_select_solution.md" -SolutionName $solName -TimeoutSeconds 30
     $ssOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-sln" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Select Solution dialog failed" }
 
@@ -269,7 +269,7 @@ try {
     Write-Host "Waiting for Client assets download prompt (policy=$policy)..."
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $dlOut = & "$PSScriptRoot\handle_download_prompt.ps1" -Policy $policy -TimeoutSeconds 90 2>&1
+    $dlOut = & "$PSScriptRoot\handle_download_prompt.md" -Policy $policy -TimeoutSeconds 90 2>&1
     $dlExitCode = $LASTEXITCODE
     $ErrorActionPreference = $prevEAP
     $dlOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "dl-prompt" -Status "INFO" -Detail $_ }
@@ -287,13 +287,13 @@ try {
             Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
         $dlTimeout = if ($ude.timeouts) { [int]$ude.timeouts.metadataDownloadSeconds } else { 3600 }
 
-        $exitOut = & "$PSScriptRoot\wait_for_vs_exit.ps1" -VsPid $vs.Id -TimeoutSeconds $dlTimeout
+        $exitOut = & "$PSScriptRoot\wait_for_vs_exit.md" -VsPid $vs.Id -TimeoutSeconds $dlTimeout
         $exitOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "dl-wait" -Status "INFO" -Detail $_ }
 
         if ($exitOut -match 'VS_EXITED') {
             Write-Host "VS exited - waiting 15s for extension registration, then relaunching..."
             Start-Sleep -Seconds 15
-            $relaunch = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
+            $relaunch = & "$PSScriptRoot\launch_vs.md" -VsPath $vsPath -TimeoutSeconds $launchTimeout
             $relaunch | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "vs-relaunch" -Status "INFO" -Detail $_ }
         }
     }
@@ -303,7 +303,7 @@ try {
 
     # 1. DETECT what VS created by diffing against the Phase A baseline.
     $lkv = if ($ude.ContainsKey('lastKnownVersion')) { $ude.lastKnownVersion } else { "" }
-    $diffOut = & "$PSScriptRoot\diff_xppconfig.ps1" -BaselineFile $baselineFile -LastKnownVersion $lkv
+    $diffOut = & "$PSScriptRoot\diff_xppconfig.md" -BaselineFile $baselineFile -LastKnownVersion $lkv
     $diffOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "diff" -Status "INFO" -Detail $_ }
     if ($LASTEXITCODE -ne 0) { throw "Could not identify the XPP config VS created" }
 
@@ -429,7 +429,7 @@ try {
     if ($ownedRslFolder) {
         $rslFullPath = Join-Path $rslDir $ownedRslFolder
     }
-    $rtOut = & "$PSScriptRoot\retarget_xpp_config.ps1" `
+    $rtOut = & "$PSScriptRoot\retarget_xpp_config.md" `
         -XppJsonPath $xppLine `
         -MetadataFolder $ude.customMetadataFolder `
         -DefaultCompany $company `
@@ -469,7 +469,7 @@ try {
         $oldXppSub      = $prevXppSubfolder
         $oldXrefDb      = $prevXrefDbName
 
-        $cleanOut = & "$PSScriptRoot\cleanup_old_version.ps1" `
+        $cleanOut = & "$PSScriptRoot\cleanup_old_version.md" `
             -OldXrefDbName $oldXrefDb `
             -OldXppSubfolder $oldXppSub `
             -OldConfigJson $oldConfigJson `
@@ -508,7 +508,7 @@ try {
     for ($selAttempt = 1; $selAttempt -le 2; $selAttempt++) {
         Show-Vs
         Start-Sleep -Seconds 1
-        $selOut = & "$PSScriptRoot\select_current_xpp_config.ps1" -ConfigName $Name -TimeoutSeconds 60
+        $selOut = & "$PSScriptRoot\select_current_xpp_config.md" -ConfigName $Name -TimeoutSeconds 60
         $selOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "select-config" -Status "INFO" -Detail $_ }
         if ($LASTEXITCODE -eq 0) { $selOk = $true; break }
 
@@ -525,12 +525,12 @@ try {
             Start-Sleep -Seconds 5
 
             # Relaunch
-            $selRelaunchOut = & "$PSScriptRoot\launch_vs.ps1" -VsPath $vsPath -TimeoutSeconds $launchTimeout
+            $selRelaunchOut = & "$PSScriptRoot\launch_vs.md" -VsPath $vsPath -TimeoutSeconds $launchTimeout
             $selRelaunchOut | ForEach-Object { Write-Host "  $_" }
             if ($LASTEXITCODE -ne 0) { throw "Failed to relaunch VS for select-config retry" }
 
             # Dismiss Start Window + wait for menu readiness
-            $null = & "$PSScriptRoot\dismiss_start_window.ps1" -TimeoutSeconds 60
+            $null = & "$PSScriptRoot\dismiss_start_window.md" -TimeoutSeconds 60
             Write-Host "  Waiting for VS menu bar after relaunch (can take several minutes)..."
             Start-Sleep -Seconds 15
             $selRetryDeadline = (Get-Date).AddSeconds(600)
@@ -571,7 +571,7 @@ try {
                 }
             }
             Write-Host "  Re-applying retarget after VS restart..."
-            $rtOut2 = & "$PSScriptRoot\retarget_xpp_config.ps1" `
+            $rtOut2 = & "$PSScriptRoot\retarget_xpp_config.md" `
                 -XppJsonPath $xppLine `
                 -MetadataFolder $ude.customMetadataFolder `
                 -DefaultCompany $company `

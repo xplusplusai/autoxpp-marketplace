@@ -1,4 +1,4 @@
-# handle_reconnect_dialog.ps1 - click "No" on the "Reconnect to Dataverse" dialog
+# handle_reconnect_dialog.md - click "No" on the "Reconnect to Dataverse" dialog
 # if it appears. If it doesn't appear within timeout (first-time connect), continue.
 #
 # Emits:
@@ -8,7 +8,7 @@
 
 param([int]$TimeoutSeconds = 15)
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Host "RECONNECT_DIALOG_ERROR VS not running"; exit 1 }

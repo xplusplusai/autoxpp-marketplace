@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/autoxpp-logo.svg" alt="AutoXPP" width="80" height="80">
+  <img src=".github/autoxpp-logo.png" alt="AutoXPP" width="80" height="80">
 </p>
 
 <h1 align="center">AutoXPP</h1>

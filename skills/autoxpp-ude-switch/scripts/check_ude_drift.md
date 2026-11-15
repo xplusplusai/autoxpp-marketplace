@@ -1,4 +1,4 @@
-# check_ude_drift.ps1 - lightweight, machine-readable UDE drift detector.
+# check_ude_drift.md - lightweight, machine-readable UDE drift detector.
 #
 # Compares the UDE that Visual Studio 2022 is CURRENTLY connected to against the
 # `activeEnv` recorded in ude-configs.json. Emits ONE parseable verdict line so
@@ -7,7 +7,7 @@
 # How "current VS UDE" is detected WITHOUT UI automation:
 #   VS touches %LOCALAPPDATA%\Microsoft\Dynamics365\XPPConfig\{name}___{version}.json
 #   on every (re)connect. The most-recently-modified file is the one VS last loaded,
-#   and the filename encodes the UDE name. (Same mechanism as show_current_ude.ps1.)
+#   and the filename encodes the UDE name. (Same mechanism as show_current_ude.md.)
 #
 # Output contract (first token is the verdict; key=value pairs follow):
 #   IN_SYNC       env=<name>
@@ -20,7 +20,7 @@
 # parse the line rather than branching on $LASTEXITCODE.
 
 $ErrorActionPreference = 'Stop'
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 # --- 1. Load config (tolerate missing/invalid) ---------------------------------
 try {

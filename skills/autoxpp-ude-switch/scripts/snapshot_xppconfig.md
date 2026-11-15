@@ -1,9 +1,9 @@
-# snapshot_xppconfig.ps1 - capture a baseline of XPPConfig\ and RuntimeSymLinks\ before a switch.
+# snapshot_xppconfig.md - capture a baseline of XPPConfig\ and RuntimeSymLinks\ before a switch.
 # Output: prints each "name|lastWriteTime" line. Caller saves to a file and diffs later.
 # Lines are prefixed with section markers: JSON: for config files, RSL: for RuntimeSymLinks folders,
 # SUB: for XPPConfig subfolders.
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 $xppDir = Get-XppConfigDir
 if (Test-Path $xppDir) {

@@ -1,9 +1,9 @@
-# wait_for_vs_exit.ps1 - poll VS until it exits (observed behavior: VS auto-closes after
+# wait_for_vs_exit.md - poll VS until it exits (observed behavior: VS auto-closes after
 # "Client assets download" completes on a new platform version so the F&O extension can
 # register). If it does not exit within TimeoutSeconds, we return "still running" and
 # the caller can proceed; otherwise we return "exited" and the caller relaunches.
 #
-# Usage: wait_for_vs_exit.ps1 [-Pid <vsPid>] [-TimeoutSeconds 3600]
+# Usage: wait_for_vs_exit.md [-Pid <vsPid>] [-TimeoutSeconds 3600]
 # Emits:
 #   VS_EXITED pid=<n>
 #   VS_STILL_RUNNING pid=<n>

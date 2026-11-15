@@ -1,4 +1,4 @@
-# ensure_skip_discovery.ps1
+# ensure_skip_discovery.md
 # Opens Tools > Options > Power Platform Tools > General and ensures
 # "Skip Discovery when connecting to Dataverse" is checked.
 # Uses UIA ValuePattern + SendMessage for fully headless operation
@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
 Add-Type -AssemblyName UIAutomationTypes  -ErrorAction SilentlyContinue
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 # --- SendMessage P/Invoke for headless keyboard input to HWND ---
 Add-Type -TypeDefinition @"
@@ -106,7 +106,7 @@ foreach ($w in $windows) {
 # --- Pre-flight: dismiss unexpected dialogs, verify not at Start Window ---
 $null = Dismiss-UnexpectedDialog
 if (Test-VsStartWindow) {
-    Write-Host "SKIP_DISCOVERY_FAIL VS is at the Start Window (no menu); run dismiss_start_window.ps1 first."
+    Write-Host "SKIP_DISCOVERY_FAIL VS is at the Start Window (no menu); run dismiss_start_window.md first."
     exit 1
 }
 
@@ -179,7 +179,7 @@ while ((Get-Date) -lt $menuDeadline -and -not $optionsDlg) {
     if (-not $optionsDlg) {
         Write-Host "  Falling back to DTE COM (separate process)..."
 
-        $helperPath = Join-Path $env:TEMP "ude_dte_open_options.ps1"
+        $helperPath = Join-Path $env:TEMP "ude_dte_open_options.md"
         Set-Content -Path $helperPath -Value $script:DteHelperScript -Encoding UTF8
 
         $dteProc = Start-Process -FilePath "powershell.exe" `

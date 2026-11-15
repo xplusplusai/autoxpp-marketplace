@@ -1,7 +1,7 @@
-# config_helpers.ps1
+# config_helpers.md
 # Dot-sourced helper for loading/merging/updating ude-configs.json.
 # Usage (from other scripts):
-#   . "$PSScriptRoot\config_helpers.ps1"
+#   . "$PSScriptRoot\config_helpers.md"
 #   $cfg = Load-UdeConfigs
 #   $ude = Resolve-Ude $cfg "<env-name>"
 

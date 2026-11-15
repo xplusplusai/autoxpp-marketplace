@@ -1,11 +1,11 @@
-# show_current_ude.ps1 - report the currently "active" UDE
+# show_current_ude.md - report the currently "active" UDE
 #
 # VS 2022 does not expose a simple "current" flag. We infer the active UDE by:
 #   1. The most-recently-modified XPPConfig\*.json file (VS touches it on (re)connect)
 #   2. Cross-check against ude-configs.json activeEnv field
 #   3. If they disagree, the filesystem wins (VS is the source of truth for "what it last loaded")
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 $xppDir = Get-XppConfigDir
 if (-not (Test-Path $xppDir)) {

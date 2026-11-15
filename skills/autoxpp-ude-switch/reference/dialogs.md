@@ -79,7 +79,7 @@ Download policy:
 **Handling:**
 1. Skill polls `Get-Process devenv -Id $pid` in a loop.
 2. When the process exits, wait 15s for MSI/extension registration.
-3. Relaunch `devenv.exe` via `launch_vs.ps1`.
+3. Relaunch `devenv.exe` via `launch_vs.md`.
 
 On next launch, VS may auto-reconnect to the UDE without needing the full dialog flow again (config is now cached). Skill verifies and reports.
 
