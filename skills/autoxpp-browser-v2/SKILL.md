@@ -657,7 +657,7 @@ Present results in structured format:
 
 ### Scripted Regression Harness (build one when a test plan passes ~20 UI cases)
 
-Driving a test plan one `playwright-cli` command at a time costs a model turn per click (snapshot output included) — ~1,000 tool calls and on the order of a million tokens for a 130-case plan. The same plan as Bash scripts runs unattended for the price of starting it and reading one results file; tokens are then spent only on failures. **Build the harness in the project, not in this skill:** coordinates, markers and test values are app-specific; only the shape is reusable. Template: `reference/harness-template.sh` (generic `lib.sh` to copy into `tests/regression/`). Worked example: CaseFusionPro `tests/regression/` (https://github.com/tmpspk/CaseFusionPro) — 129 cases, 14 screens, results + plan updater.
+Driving a test plan one `playwright-cli` command at a time costs a model turn per click (snapshot output included) — ~1,000 tool calls and on the order of a million tokens for a 130-case plan. The same plan as Bash scripts runs unattended for the price of starting it and reading one results file; tokens are then spent only on failures. **Build the harness in the project, not in this skill:** coordinates, markers and test values are app-specific; only the shape is reusable. Template: `reference/harness-template.md` (generic `lib.sh` to copy into `tests/regression/`). Worked example: CaseFusionPro `tests/regression/` (https://github.com/tmpspk/CaseFusionPro) — 129 cases, 14 screens, results + plan updater.
 
 Shape (all pieces live in `{WorkspaceRoot}/tests/regression/`):
 

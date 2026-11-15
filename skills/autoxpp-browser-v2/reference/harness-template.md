@@ -1,4 +1,3 @@
-#!/bin/bash
 # ============================================================================================
 # autoxpp-browser-v2 — regression harness TEMPLATE (generic lib.sh)
 #
