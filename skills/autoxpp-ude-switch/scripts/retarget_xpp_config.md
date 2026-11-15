@@ -1,11 +1,11 @@
-# retarget_xpp_config.ps1 - overwrite ModelStoreFolder/DebugSourceFolder/RuntimePackagesDirectory in an XPP JSON
+# retarget_xpp_config.md - overwrite ModelStoreFolder/DebugSourceFolder/RuntimePackagesDirectory in an XPP JSON
 #
 # VS auto-generates the {name}___{version}.json with ModelStoreFolder set to
 # whatever path it last saw (often the previous UDE's folder), causing all UDEs
 # to collide on the same custom metadata folder. This script rewrites that path
 # to the customer-specific folder from ude-configs.json.
 #
-# Usage: retarget_xpp_config.ps1 -XppJsonPath <path> -MetadataFolder <path> [-DefaultCompany <code>] [-RuntimeSymLinkPath <path>]
+# Usage: retarget_xpp_config.md -XppJsonPath <path> -MetadataFolder <path> [-DefaultCompany <code>] [-RuntimeSymLinkPath <path>]
 #
 # Emits XPP_RETARGETED on success.
 

@@ -1,4 +1,4 @@
-# wait_for_validation.ps1 - after the URL is submitted, wait while Power Platform Tools
+# wait_for_validation.md - after the URL is submitted, wait while Power Platform Tools
 # validates the connection and loads workflows/plugins, and return when step 2
 # (Select Solution) becomes available.
 #
@@ -8,7 +8,7 @@
 # (the wizard keeps the same title across steps). The old text-only poll reported a
 # false VALIDATION_STUCK even though validation had finished.
 #
-# Usage: wait_for_validation.ps1 [-TimeoutSeconds 300]
+# Usage: wait_for_validation.md [-TimeoutSeconds 300]
 #
 # Emits:
 #   VALIDATION_DONE      (Select Solution step available)
@@ -16,7 +16,7 @@
 
 param([int]$TimeoutSeconds = 300)
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Output "VALIDATION_ERROR VS not running"; exit 1 }

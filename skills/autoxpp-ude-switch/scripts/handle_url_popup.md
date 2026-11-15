@@ -1,11 +1,11 @@
-# handle_url_popup.ps1 - enter the Dataverse environment URL and click Ok on the
+# handle_url_popup.md - enter the Dataverse environment URL and click Ok on the
 # "Enter environment instance url" popup that appears after clicking Login.
 #
 # IMPORTANT (P-5): this popup is a TOP-LEVEL window (a child of the desktop), NOT a
 # child of the VS window. Earlier versions searched under the VS element and reported
 # URL_POPUP_MISSING even though the popup was on screen. We now search from RootElement.
 #
-# Usage: handle_url_popup.ps1 -Url <dataverseUrl> [-TimeoutSeconds 30]
+# Usage: handle_url_popup.md -Url <dataverseUrl> [-TimeoutSeconds 30]
 #
 # Emits:
 #   URL_POPUP_HANDLED url=<url>
@@ -17,7 +17,7 @@ param(
     [int]$TimeoutSeconds = 30
 )
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $AE = [System.Windows.Automation.AutomationElement]
 $TS = [System.Windows.Automation.TreeScope]

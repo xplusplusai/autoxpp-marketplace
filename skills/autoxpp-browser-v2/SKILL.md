@@ -13,7 +13,7 @@ description: >-
   self-learning site patterns, cross-skill integration, and structured evidence
   capture on top of the built-in playwright-cli skill. Site-specific knowledge
   lives in reference/ files.
-allowed-tools: Bash(playwright-cli:*), Read, Write(./screenshots/**, ./reference/**), Edit(./reference/**), Glob, Grep
+allowed-tools: Read, Glob, Grep
 ---
 
 # Browser Automation Skill v2 (playwright-cli Wrapper)

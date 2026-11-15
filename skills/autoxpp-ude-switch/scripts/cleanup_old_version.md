@@ -1,11 +1,11 @@
-# cleanup_old_version.ps1 - remove artifacts from a previous version after a version change.
+# cleanup_old_version.md - remove artifacts from a previous version after a version change.
 #
 # Detaches the old XRef DB from LocalDB, deletes old XPPConfig subfolder (with .mdf files),
 # old config JSON, and old RuntimeSymLinks folder. Only acts on explicitly named artifacts;
 # never scans or deletes speculatively.
 #
 # Usage:
-#   cleanup_old_version.ps1 [-OldXrefDbName <name>] [-OldXppSubfolder <name>]
+#   cleanup_old_version.md [-OldXrefDbName <name>] [-OldXppSubfolder <name>]
 #                           [-OldConfigJson <name>] [-OldRslFolder <name>]
 #
 # All parameters are optional. Only supplied artifacts are cleaned up.
@@ -19,7 +19,7 @@ param(
     [string]$OldRslFolder = ""
 )
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 $xppDir = Get-XppConfigDir
 $rslDir = Get-RuntimeSymLinksDir

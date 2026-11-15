@@ -1,4 +1,4 @@
-# handle_download_prompt.ps1 - respond to "Client assets download" prompt
+# handle_download_prompt.md - respond to "Client assets download" prompt
 #
 # Dialog text (observed):
 #   Title: "Client assets download"
@@ -12,7 +12,7 @@
 #   skip         -> click No; warn if version not cached
 #   skip-if-cached -> click No ONLY if %LocalAppData%\Dynamics365\{version} exists; else Yes
 #
-# Usage: handle_download_prompt.ps1 -Policy <always|ask|skip|skip-if-cached> [-TimeoutSeconds 120]
+# Usage: handle_download_prompt.md -Policy <always|ask|skip|skip-if-cached> [-TimeoutSeconds 120]
 #
 # Emits:
 #   DOWNLOAD_PROMPT_HANDLED choice=<Yes|No> version=<x.y.z> cached=<yes|no>
@@ -25,8 +25,8 @@ param(
     [int]$TimeoutSeconds = 120
 )
 
-. "$PSScriptRoot\uia_helpers.ps1"
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
+. "$PSScriptRoot\config_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Host "DOWNLOAD_PROMPT_ERROR VS not running"; exit 1 }

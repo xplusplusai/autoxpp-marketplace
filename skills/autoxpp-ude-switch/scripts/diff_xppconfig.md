@@ -1,10 +1,10 @@
-# diff_xppconfig.ps1 - identify VS-created artifacts after a switch.
+# diff_xppconfig.md - identify VS-created artifacts after a switch.
 #
 # Diffs XPPConfig folder (JSON files, subfolders) and RuntimeSymLinks against
 # the Phase A baseline snapshot. Returns the config JSON VS touched, plus any
 # new RuntimeSymLinks folder and XPPConfig subfolder.
 #
-# Usage: diff_xppconfig.ps1 -BaselineFile <path> [-LastKnownVersion <ver>]
+# Usage: diff_xppconfig.md -BaselineFile <path> [-LastKnownVersion <ver>]
 #
 # Emits (Write-Output, captured by caller):
 #   XPP_JSON: <full path>             -- the VS-created/updated config file
@@ -22,7 +22,7 @@ param(
     [string]$LastKnownVersion = ""
 )
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 $xppDir = Get-XppConfigDir
 if (-not (Test-Path $xppDir)) {

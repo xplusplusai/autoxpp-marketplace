@@ -1,4 +1,4 @@
-# handle_login_dialog.ps1 - click Login on step 1 ("Connect to Dataverse") of the
+# handle_login_dialog.md - click Login on step 1 ("Connect to Dataverse") of the
 # "Configure Microsoft Power Platform Solution" wizard.
 #
 # P-7 fix: the wizard window is named "Configure Microsoft Power Platform Solution"
@@ -14,7 +14,7 @@
 
 param([int]$TimeoutSeconds = 20)
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Output "LOGIN_DIALOG_ERROR VS not running"; exit 1 }

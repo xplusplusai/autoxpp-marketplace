@@ -1,4 +1,4 @@
-# handle_select_solution.ps1 - on step 2 ("Select Solution") of the
+# handle_select_solution.md - on step 2 ("Select Solution") of the
 # "Configure Microsoft Power Platform Solution" wizard, pick the named solution in
 # the combo and click Done.
 #
@@ -7,7 +7,7 @@
 # lives in the AccSolutionSelection group. The earlier name search reported
 # SELECT_SOLUTION_MISSING.
 #
-# Usage: handle_select_solution.ps1 [-SolutionName "Default"] [-TimeoutSeconds 60]
+# Usage: handle_select_solution.md [-SolutionName "Default"] [-TimeoutSeconds 60]
 #
 # Emits:
 #   SELECT_SOLUTION_HANDLED solution=<name>
@@ -19,7 +19,7 @@ param(
     [int]$TimeoutSeconds = 60
 )
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 $vs = Get-VsProcess
 if (-not $vs) { Write-Output "SELECT_SOLUTION_ERROR VS not running"; exit 1 }

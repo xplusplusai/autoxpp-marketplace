@@ -1,6 +1,6 @@
-# list_udes.ps1 - print configured UDEs with lastUsed + cache status
+# list_udes.md - print configured UDEs with lastUsed + cache status
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 $cfg = Load-UdeConfigs
 

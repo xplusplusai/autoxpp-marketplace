@@ -1,4 +1,4 @@
-# open_connect_dataverse_menu.ps1 - drive VS menu: Tools -> Connect to online Dataverse
+# open_connect_dataverse_menu.md - drive VS menu: Tools -> Connect to online Dataverse
 #
 # Uses UIA ExpandCollapsePattern on the Tools menu, then searches for the
 # "Connect to online Dataverse" menu item. Falls back to DTE COM via separate
@@ -12,7 +12,7 @@
 
 param([int]$TimeoutSeconds = 600)
 
-. "$PSScriptRoot\uia_helpers.ps1"
+. "$PSScriptRoot\uia_helpers.md"
 
 # --- DTE helper script content (written to temp and run via Start-Process) ---
 # Tries to execute "Connect to online Dataverse" via DTE COM, bypassing UIA menus.
@@ -180,7 +180,7 @@ while ((Get-Date) -lt $deadline) {
     Write-Host "  Trying DTE COM fallback..."
     Remove-Item $signalPath -Force -ErrorAction SilentlyContinue
 
-    $helperPath = Join-Path $env:TEMP "ude_dte_connect_dataverse.ps1"
+    $helperPath = Join-Path $env:TEMP "ude_dte_connect_dataverse.md"
     Set-Content -Path $helperPath -Value $script:DteConnectScript -Encoding UTF8
 
     $dteProc = Start-Process -FilePath "powershell.exe" `

@@ -1,8 +1,8 @@
-# add_ude.ps1 - interactive add flow. Prompts for UDE details and appends to ude-configs.json.
+# add_ude.md - interactive add flow. Prompts for UDE details and appends to ude-configs.json.
 #
 # Usage:
-#   add_ude.ps1                                  # fully interactive
-#   add_ude.ps1 -Name <n> -DataverseUrl <u> ...  # non-interactive (any missing prompted)
+#   add_ude.md                                  # fully interactive
+#   add_ude.md -Name <n> -DataverseUrl <u> ...  # non-interactive (any missing prompted)
 
 param(
     [string]$Name,
@@ -15,7 +15,7 @@ param(
     [string]$DefaultCompany = ""
 )
 
-. "$PSScriptRoot\config_helpers.ps1"
+. "$PSScriptRoot\config_helpers.md"
 
 function Read-Required {
     param([string]$Prompt, [string]$Default = "")

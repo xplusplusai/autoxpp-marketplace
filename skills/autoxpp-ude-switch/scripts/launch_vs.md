@@ -1,6 +1,6 @@
-# launch_vs.ps1 - ensure VS 2022 is running. Launch if not. Wait for MainWindowHandle.
+# launch_vs.md - ensure VS 2022 is running. Launch if not. Wait for MainWindowHandle.
 #
-# Usage: launch_vs.ps1 [-VsPath <path>] [-TimeoutSeconds 120]
+# Usage: launch_vs.md [-VsPath <path>] [-TimeoutSeconds 120]
 # Emits:
 #   VS_ALREADY_RUNNING pid=<n>
 #   VS_LAUNCHED pid=<n>
