@@ -53,9 +53,13 @@ Switches Visual Studio 2022 UDE from one online D365 F&O environment to another,
 /autoxpp-ude-switch <name> --close-existing  → if VS2022 is already open, close it first, then switch (fresh session)
 /autoxpp-ude-switch <name> --manual-confirm  → user completed switch manually; just update lastUsed/activeEnv
 /autoxpp-ude-switch --drift-check    → compare VS's live UDE vs config activeEnv (machine-readable)
+/autoxpp-ude-switch --scan-residuals → scan for stale version residuals (report only)
+/autoxpp-ude-switch --scan-residuals --delete → scan + delete stale residuals (after user approval)
 ```
 
 **Drift check (`scripts/check_ude_drift.md`):** Emits ONE parseable verdict line comparing the UDE VS 2022 last loaded (newest `XPPConfig\{name}___{ver}.json` — no UI automation) against `ude-configs.json → activeEnv`. Verdicts: `IN_SYNC`, `DRIFT`, `VS_UNKNOWN`, `NO_VS_CONFIG`, `NO_CONFIG`. Run by session-start and lifecycle pre-flight to catch a manual VS switch that left `activeEnv` stale (see CLAUDE.md "UDE Drift Check"). Reconcile via `<name> --manual-confirm` (VS→config) or `<activeEnv>` full switch (config→VS).
+
+**Residual scan (`scripts/scan_residuals.md`):** Scans `RuntimeSymLinks`, `XPPConfig`, and version directories (`10.0.*`) under `%LOCALAPPDATA%\Microsoft\Dynamics365\` for stale files not referenced by any `ude-configs.json` entry. Reports structured `RESIDUAL:` lines and a `RESIDUAL_SUMMARY:` count. Never auto-deletes — the AI presents the report and asks the user; on approval, re-runs with `-Delete`. **Automatic trigger:** `switch_ude.md` runs the scan (report-only) after a version change cleanup in Phase C step 10. The AI reads `RESIDUAL_SUMMARY` from the switch output and, if `total > 0`, prompts: "N stale residuals found from previous versions. Delete them?" On yes, runs `--scan-residuals --delete`. **Manual trigger:** `/autoxpp-ude-switch --scan-residuals` anytime.
 
 ## Prerequisites (one-time per machine, NOT automated)
 
@@ -96,6 +100,8 @@ pwsh "scripts/switch_ude.md" -Name "<env-name>" -DownloadPolicy always|ask|skip|
 pwsh "scripts/switch_ude.md" -Current
 pwsh "scripts/switch_ude.md" -List
 pwsh "scripts/switch_ude.md" -Add
+pwsh "scripts/switch_ude.md" -ScanResiduals            # report stale residuals
+pwsh "scripts/switch_ude.md" -ScanResiduals -Delete    # remove stale residuals (user-approved)
 ```
 
 **`-CloseExisting` (skill option `--close-existing`):** by default, if VS2022 is already open the switch stops with **exit 2** so the orchestrator can get the user's approval (closing VS can lose unsaved work). Pass `-CloseExisting` when closing has already been approved — it closes the open session and starts fresh without the exit-2 round-trip. Use it for automation; omit it for interactive safety.
@@ -126,6 +132,8 @@ pwsh "scripts/switch_ude.md" -Add
 | `select_current_xpp_config.md` | UIA: Extensions → Dynamics 365 → Configure Metadata, set target config as Current |
 | `snapshot_xppconfig.md` | Baseline snapshot of `XPPConfig\` folder |
 | `diff_xppconfig.md` | Identify newly created JSON file after switch |
+| `cleanup_old_version.md` | Detach old XRef DB, delete old XPP subfolder + config JSON + RSL folder (explicit names, called during version change) |
+| `scan_residuals.md` | Scan RuntimeSymLinks, XPPConfig, version dirs for stale residuals across all configs. Report-only default; `-Delete` removes |
 
 ## Flow summary (happy path)
 
@@ -162,6 +170,7 @@ Phase C — post-switch config lifecycle (one config per UDE, schemaVersion 4)
 22. Delete VS-generated duplicate RuntimeSymLinks folders (keep tracked one)
 23. On version change: cleanup old artifacts (cleanup_old_version.md)
     → detach old XRef DB, delete old XPPConfig subfolder + config JSON
+    → scan for broader stale residuals across all configs (scan_residuals.md, report-only)
     → update standardCodebasePath to new platform version
 24. Update tracked fields in ude-configs.json (xppConfigFile, xppConfigSubfolder,
     runtimeSymLinkFolder, xrefDbName, vsOrgName)

@@ -8,6 +8,8 @@
 #   switch_ude.md -Current                        # print current active UDE
 #   switch_ude.md -List                           # list configured UDEs
 #   switch_ude.md -Add                            # interactive add flow
+#   switch_ude.md -ScanResiduals                  # scan for stale version residuals
+#   switch_ude.md -ScanResiduals -Delete          # scan + delete (caller-approved)
 #
 # Exit codes:
 #   0 - success
@@ -23,6 +25,8 @@ param(
     [switch]$NoDownload,
     [switch]$CloseExisting,
     [switch]$ManualConfirm,
+    [switch]$ScanResiduals,
+    [switch]$Delete,
     [ValidateSet('','always','ask','skip','skip-if-cached')]
     [string]$DownloadPolicy = ''
 )
@@ -33,9 +37,20 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\uia_helpers.md"   # Show-Vs / Bring-SelfToFront (Minimize-Vs alias) are called directly below
 
 # --- Mode dispatch ---
-if ($List)    { & "$PSScriptRoot\list_udes.md"; exit $LASTEXITCODE }
-if ($Current) { & "$PSScriptRoot\show_current_ude.md"; exit $LASTEXITCODE }
-if ($Add)     { & "$PSScriptRoot\add_ude.md"; exit $LASTEXITCODE }
+if ($List)           { & "$PSScriptRoot\list_udes.md"; exit $LASTEXITCODE }
+if ($Current)        { & "$PSScriptRoot\show_current_ude.md"; exit $LASTEXITCODE }
+if ($Add)            { & "$PSScriptRoot\add_ude.md"; exit $LASTEXITCODE }
+if ($Delete -and -not $ScanResiduals) {
+    Write-Host "ERROR: -Delete requires -ScanResiduals."
+    Write-Host "       Usage: switch_ude.md -ScanResiduals -Delete"
+    exit 3
+}
+if ($ScanResiduals)  {
+    $scanArgs = @()
+    if ($Delete) { $scanArgs += '-Delete' }
+    & "$PSScriptRoot\scan_residuals.md" @scanArgs
+    exit $LASTEXITCODE
+}
 
 if ($ManualConfirm) {
     # Manual confirmation mode: user completed the switch outside the skill.
@@ -473,7 +488,7 @@ try {
             -OldXrefDbName $oldXrefDb `
             -OldXppSubfolder $oldXppSub `
             -OldConfigJson $oldConfigJson `
-            -OldRslFolder $prevRslFolder
+            -OldRslFolder $prevRslFolder 6>&1
         $cleanOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "cleanup-old" -Status "INFO" -Detail $_ }
 
         # Update standardCodebasePath to new version
@@ -623,6 +638,14 @@ try {
     # Update ude-configs.json lastUsed
     Update-UdeLastUsed -Name $Name -Version $ver
     Write-UdeLog -LogFile $logFile -Step "update-cfg" -Status "OK" -Detail "lastUsed + version=$ver"
+
+    # Scan for broader residuals AFTER config is fully updated (so the new
+    # version's artifacts are recognized as active, not flagged as stale).
+    if ($isVersionChange) {
+        Write-Host "  Scanning for stale residuals from previous versions..."
+        $scanOut = & "$PSScriptRoot\scan_residuals.md" 6>&1
+        $scanOut | ForEach-Object { Write-Host "  $_"; Write-UdeLog -LogFile $logFile -Step "scan-residuals" -Status "INFO" -Detail $_ }
+    }
 
     Maximize-Vs
 
