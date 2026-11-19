@@ -223,8 +223,11 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
 │                                                               │
 │     IF snapshot succeeds (browser already running):            │
 │       → DO NOT close it. Reuse the existing browser.          │
-│       → Open a new tab for the target URL:                    │
-│         playwright-cli tab-new {target-url}                   │
+│       → Open a new tab, then navigate it:                     │
+│         playwright-cli tab-new                                │
+│         playwright-cli goto {target-url}                      │
+│         (tab-new {url} can leave the tab on about:blank —     │
+│         the tab list tab-new prints shows it.)                │
 │       → Auth is already valid (persistent profile).           │
 │       → Skip to step 4 (load knowledge).                      │
 │                                                               │
@@ -779,7 +782,7 @@ When navigating to a NEW site (not previously seen), identify it:
 1. After page loads, inspect:
    - Page title (from snapshot)
    - Framework indicators via eval:
-     playwright-cli eval "(() => {
+     playwright-cli eval "() => {
        const s = {};
        if (window.$dyn) s['d365-fo'] = true;
        if (window.Xrm) s['d365-ce'] = true;
@@ -787,7 +790,9 @@ When navigating to a NEW site (not previously seen), identify it:
        if (window.GlideAjax) s['servicenow'] = true;
        s._title = document.title;
        return JSON.stringify(s);
-     })()"
+     }"
+     Pass a function (`() => {...}`) or a bare expression, never an invoked
+     expression (`(() => {...})()`) — the CLI calls the result itself.
 
 2. Derive site key (lowercase kebab-case):
    "D365 Finance & Operations" → d365-fo
