@@ -185,6 +185,16 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
     - Stopping a background Bash task does **not** kill the test script it started. The orphan keeps clicking into the browser session — into whatever page you have since navigated to. Before touching the browser after a stopped run: `pkill -f "test-|run-all"` (match your script names) and check `pgrep -af playwright-cli`.
     - Foreground `sleep` longer than a few seconds is blocked in Claude Code. Wait for a long run with the **Monitor** tool on `tail -F run.log | grep --line-buffered "PASS\|FAIL\|RUN COMPLETE"` (30-minute cap — re-arm it when it expires), never with a sleep loop. Pair with rule 11's orphan guards inside the script itself.
 
+16. **STALE CACHED SCRIPTS AFTER A CODE CHANGE**: The `--persistent` profile keeps its HTTP cache across sessions. If a page behaves as if a script or stylesheet change is missing (a config key is undefined, a new element is absent) while `curl` shows the server already serves the new file, the browser is running a cached copy. A plain `page.reload()` does not fix it, and neither does disabling the cache through a CDP session before reloading. Re-fetch the changed files with cache bypass, then reload:
+    ```js
+    await page.evaluate(async () => {
+      for (const u of ['/js/<changed-script>.js', '/<changed-page>.html'])   // the files that changed
+        await fetch(u, { cache: 'reload' });
+    });
+    await page.reload();
+    ```
+    Check this before concluding that the page or the change is broken.
+
 ---
 
 ## Section 1: Environment Check
