@@ -195,6 +195,16 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
     ```
     Check this before concluding that the page or the change is broken.
 
+17. **LOCAL HTML FILES NEED A LOCALHOST SERVER**: `playwright-cli` blocks `file:` URLs (allowed: `http:`, `https:`, `about:`, `data:`). `goto file:///...` prints an error but the tab stays on `about:blank`, and a screenshot taken next is a blank image. To open a locally generated HTML file (email preview, report, generated page), put it in its own folder, serve that folder on a spare localhost port, and stop the server afterwards:
+    ```bash
+    python -m http.server {port} --bind 127.0.0.1 --directory "{folder}" >/dev/null 2>&1 &
+    echo $! > "{folder}/.server.pid"
+    playwright-cli goto "http://127.0.0.1:{port}/{file}.html"
+    # ... screenshots ...
+    kill "$(cat "{folder}/.server.pid")" && rm "{folder}/.server.pid"
+    ```
+    Save the process ID to a file, not a shell variable: each Bash tool call is a new shell, so a variable set when the server started is empty by the time you stop it, and the server is left running. After any `goto`, confirm the page URL is the target before capturing evidence; a blank screenshot of a few KB means the navigation did not happen.
+
 ---
 
 ## Section 1: Environment Check
