@@ -194,6 +194,10 @@ or syntax changes. Our wrapper (this file) is unaffected — no project changes 
     await page.reload();
     ```
     Check this before concluding that the page or the change is broken.
+    The cache is keyed by full URL: a page that loads the same file under a versioned URL
+    (`<script>.js?v=2`) holds a separate stale copy, so re-fetch every URL variant the pages use
+    (search the pages for `<changed-file>?`). When a test sweeps many pages, also re-fetch each page's
+    own URL before navigating to it, because the page HTML is cached too.
 
 17. **LOCAL HTML FILES NEED A LOCALHOST SERVER**: `playwright-cli` blocks `file:` URLs (allowed: `http:`, `https:`, `about:`, `data:`). `goto file:///...` prints an error but the tab stays on `about:blank`, and a screenshot taken next is a blank image. To open a locally generated HTML file (email preview, report, generated page), put it in its own folder, serve that folder on a spare localhost port, and stop the server afterwards:
     ```bash
@@ -586,6 +590,22 @@ Web frameworks often render confirmation/info dialogs as DOM elements, not nativ
 - `playwright-cli dialog-accept` only works for **native** browser dialogs
 - For app-rendered dialogs: snapshot → find button ref → click it
 - **Check site reference** for dialog patterns specific to the app
+
+### File Uploads
+- **Put the test file inside the workspace.** `playwright-cli upload <file>` rejects any path outside
+  the allowed roots (`File access denied: … is outside allowed roots. Allowed roots: <folder>`). The
+  allowed root is the folder the session was opened from. Copy the file into it (for example the
+  screenshots/evidence folder) first, and delete it afterwards.
+- **A failed `upload` closes the file chooser.** The next attempt then fails with
+  `can only be used when there is related modal state present`. Re-open the chooser (click the
+  upload control again) before retrying.
+- **Hidden file input — set the files directly.** When the control is a drop zone with a hidden
+  `<input type="file">` and a "browse" label that has no ref, clicking the zone's ref opens no
+  chooser, and `upload` fails with the same "related modal state" error. Skip the chooser:
+  `playwright-cli run-code "async page => { await page.setInputFiles('#<input-id>', '<path-inside-workspace>'); }"`
+  Find the input's id or selector in the page source or with `eval`. The allowed-roots check applies
+  here too, so the file must still be inside the workspace. Then snapshot and confirm the file name
+  appears in the control before submitting. (2026-11-21)
 
 ### Session Monitoring During Long Waits
 When this skill is idle while another skill runs (build, deploy, data migration):
