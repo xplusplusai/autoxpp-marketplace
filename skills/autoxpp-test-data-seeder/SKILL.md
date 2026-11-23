@@ -1,10 +1,11 @@
 ---
 name: autoxpp-test-data-seeder
 description: >-
-  Background agent that pre-seeds test data in the D365 environment while
-  dev-v2 analyzes standard code. Reads test_cases.md as a shopping list,
-  finds or creates required records via OData/SQL/browser, and writes
-  test_data_manifest.md for the tester to consume.
+  Background agent that pre-seeds test data in the D365 environment while dev-v2
+  analyzes standard code. Reads test_cases.md as a shopping list, finds or creates
+  required records (SOs, inventory, EDI staging, etc.) via OData/SQL/browser, and
+  writes test_data_manifest.md for the tester to consume. Non-blocking — tester
+  falls back to inline seeding if the manifest is absent or incomplete.
 ---
 
 # AutoXPP Test Data Seeder

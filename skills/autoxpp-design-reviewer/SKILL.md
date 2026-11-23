@@ -4,9 +4,10 @@ description: >-
   Pre-coding design review gate between req-analyzer and dev-v2. Runs for
   requirements classified as complex or risky. Loads design-reviewer +
   senior-fo-developer roles, reads requirement.txt / work_items.md /
-  test_cases.md and relevant dev-reference sections, and writes
-  design_review.md with PASS / NEEDS-WORK / BLOCKED verdict. Dev-v2 cannot
-  proceed until PASS.
+  test_cases.md and relevant dev-reference sections, and writes design_review.md
+  with PASS / NEEDS-WORK / BLOCKED verdict. Dev-v2 cannot proceed until PASS.
+  Catches anti-patterns, missing multi-X layers, unjustified API choices, and
+  unverified HIGH-risk assumptions before a line of code is written.
 ---
 
 # AutoXPP Design Reviewer

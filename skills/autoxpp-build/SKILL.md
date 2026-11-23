@@ -1,9 +1,13 @@
 ---
 name: autoxpp-build
-description: >-
-  Drives Visual Studio 2022's full build-deploy cycle for D365 F&O via
-  PowerShell UI Automation. Zero human clicks — compile, sync database,
-  deploy to online environment.
+description: >
+  Build and deploy D365 F&O X++ models in Visual Studio 2022 (UDE).
+  Use when: user says "build", "compile", "deploy", "sync database",
+  "refresh models", or after completing X++ code changes that need
+  compilation. Also use when autoxpp-browser testing reveals code
+  changes are needed and a rebuild is required. Even if the user doesn't
+  explicitly mention "build", trigger this skill when the task clearly
+  requires compiling and deploying X++ code.
 ---
 
 # AutoXPP Build

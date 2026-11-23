@@ -1,10 +1,15 @@
 ---
 name: autoxpp-watchdog
 description: >-
-  External safety net for the autoxpp lifecycle. Spawned ONCE at the start of
-  any requirement lifecycle, before any other autoxpp skill. Runs a background
-  poll script over lifecycle.log and emits STALL events when a phase transition
-  is missed. Zero LLM cost per tick — pure file-based detection.
+  Lifecycle progress monitor and stall detector. Spawned ONCE at lifecycle start
+  as a lightweight background LLM agent. Runs a 5-minute cycle: reads
+  lifecycle.log + agent_conversation.txt + workspace file activity to determine
+  current phase status, then appends [watchdog] PROGRESS ticks (with context)
+  or STALL alerts to lifecycle.log. The orchestrator's tail-f Monitor picks up
+  STALL lines and acts. Also enforces fix-loop circuit breaker (iter-3 / iter-4).
+  Replaces the prior pure-bash poll_lifecycle.sh approach — an LLM agent can
+  read text files intelligently and produce meaningful tick summaries that
+  external platforms consume for progress reporting and kill decisions.
 ---
 
 # AutoXPP Watchdog

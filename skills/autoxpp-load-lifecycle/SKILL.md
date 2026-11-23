@@ -1,12 +1,13 @@
 ---
 name: autoxpp-load-lifecycle
 description: >-
-  Bootloader for the autoxpp D365 F&O lifecycle. Call ONCE at the start of a
-  requirement to mark the boundary between research/refine (pre-lifecycle) and
-  autonomous execution (req-analyzer -> test-composer -> dev-v2 -> build ->
-  tester -> DONE or fix-loop). The skill resolves workspace, writes
-  requirement.txt from the arg, initializes lifecycle.log, spawns the watchdog,
-  and auto-chains into req-analyzer + test-composer.
+  Bootloader for the autoxpp D365 F&O lifecycle. Call ONCE at the start of
+  a requirement to mark the boundary between research/refine (pre-lifecycle)
+  and autonomous execution (req-analyzer → test-composer → dev-v2 → build
+  → tester → DONE or fix-loop). The skill resolves workspace, writes
+  requirement.txt from the arg, initializes lifecycle.log, spawns the
+  watchdog, and auto-chains into req-analyzer + test-composer. After
+  invocation, the Autonomous Execution Rule is in force.
 ---
 
 # AutoXPP Load Lifecycle

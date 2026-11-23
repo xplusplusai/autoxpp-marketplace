@@ -3,9 +3,10 @@ name: autoxpp-tester
 description: >-
   Execute test cases and produce a structured test report. Reads test_cases.md,
   orchestrates test execution via domain-appropriate tools (autoxpp-browser-v2
-  for UI paths, direct HTTP/SQL/Service Bus for integration paths), handles test
-  data setup, captures evidence, and outputs test_report.md with pass/fail per
-  case.
+  for UI paths, direct HTTP/SQL/Service Bus for integration paths), handles
+  test data setup, captures evidence, and outputs test_report.md with pass/fail
+  per case. Domain-specific login, environment resolution, seed recipes, and
+  evidence conventions live in reference/domain-*.md.
 ---
 
 # AutoXPP Tester

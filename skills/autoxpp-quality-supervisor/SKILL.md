@@ -5,7 +5,10 @@ description: >-
   (which catches mechanical stalls — absence of motion). This skill catches
   wrongness of motion: confidence inflation, anti-pattern emergence, scope
   creep, doom-loop relapse. Invoked periodically on phase transitions and
-  on-demand after non-green tester verdicts.
+  on-demand after non-green tester verdicts. Loads the quality-supervisor role,
+  reads lifecycle.log + progress.md + recent diffs, and writes supervisor_audit.md
+  with CONTINUE / WATCH / INJECT / PAUSE verdicts. Does not modify code or
+  tests — only produces audits and recommended interventions.
 ---
 
 # AutoXPP Quality Supervisor

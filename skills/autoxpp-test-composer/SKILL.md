@@ -6,7 +6,8 @@ description: >-
   pass conditions. Append-only on feedback iterations — never remove old cases.
   Run once per requirement — skip if test_cases.md already exists and no new
   feedback. Works from the original requirement directly — does NOT depend on
-  work_items.md.
+  work_items.md. Domain-specific test case patterns and environment fields
+  live in reference/domain-*.md.
 ---
 
 # AutoXPP Test Composer

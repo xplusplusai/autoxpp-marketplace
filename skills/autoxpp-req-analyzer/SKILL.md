@@ -1,12 +1,13 @@
 ---
 name: autoxpp-req-analyzer
 description: >-
-  Analyze a requirement and produce structured work items with dependencies.
-  Reads requirement.txt (and optionally Stage 1 output, feedback). Outputs
-  work_items.md with developer-level task descriptions and a complexity flag
-  (simple/complex/risky). Domain-specific artifact tags, grep patterns, and
-  worked examples live in reference/domain-*.md. Run once per requirement —
-  skip if work_items.md already exists and requirement unchanged.
+  Analyze a requirement against existing code and produce delta work items.
+  Audits existing artifacts (fields, methods, logic — not just file existence)
+  before analysis to avoid regenerating working code. Outputs work_items.md
+  with only what's new or needs change, plus [EXISTING] markers for items
+  already implemented. Domain-specific references in reference/domain-*.md.
+  Run once per requirement — skip if work_items.md already exists and
+  requirement unchanged.
 ---
 
 # AutoXPP Req Analyzer
