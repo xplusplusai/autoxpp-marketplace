@@ -6,7 +6,8 @@ description: >-
   lifecycle.log + agent_conversation.txt + workspace file activity to determine
   current phase status, then appends [watchdog] PROGRESS ticks (with context)
   or STALL alerts to lifecycle.log. The orchestrator's tail-f Monitor picks up
-  STALL lines and acts. Also enforces fix-loop circuit breaker (iter-3 / iter-4).
+  STALL lines and acts. Also reports the fix-loop circuit breaker thresholds
+  (read from the configured fix-loop limit). Writes only [watchdog] lines.
   Replaces the prior pure-bash poll_lifecycle.sh approach — an LLM agent can
   read text files intelligently and produce meaningful tick summaries that
   external platforms consume for progress reporting and kill decisions.
