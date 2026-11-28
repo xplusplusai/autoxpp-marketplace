@@ -27,8 +27,12 @@ The watchdog also serves as the lifecycle's **progress ticker** -- every 5 minut
 
 ### Fix-loop circuit breaker
 
-- **Iteration 3** without a supervisor retrospective: `NOTICE` (orchestrator must invoke quality supervisor)
-- **Iteration 4+**: `ESCALATE` (orchestrator must halt and contact human)
+Thresholds follow the configured fix-loop limit M (`defaults.maxFixLoopIterations`, default 3):
+
+- **Iteration M** without a supervisor retrospective: `NOTICE` (the quality supervisor is due)
+- **Iteration M+3 and above**: `ESCALATE` (the lifecycle's hard stop is reached; the orchestrator decides and writes the lifecycle line)
+
+The watchdog writes only `[watchdog]` lines. It never writes the lifecycle's own `DONE` or `FAIL` line.
 
 ## How It Works
 
